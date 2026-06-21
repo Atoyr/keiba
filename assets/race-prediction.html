@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>レース予想ボード</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=Roboto+Mono:wght@500;700&display=swap');
+ 
+  :root{
+    --ink:#13161c;
+    --paper:#f3efe6;
+    --paper-2:#ece6d8;
+    --line:#cfc6b2;
+    --turf:#2f6b46;       /* 芝のグリーン */
+    --turf-deep:#1e4a30;
+    --gold:#c0922e;       /* 重賞のゴールド */
+    --crimson:#a8323a;    /* 消し・警告 */
+    --slate:#5c6470;
+    --honmei:#b8232e;     /* 本命の赤丸 */
+  }
+ 
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+    padding:0 0 64px;
+  }
+ 
+  /* ===== ヘッダー ===== */
+  .masthead{
+    background:var(--turf-deep);
+    color:var(--paper);
+    padding:28px 24px 24px;
+    border-bottom:4px solid var(--gold);
+    position:relative;
+    overflow:hidden;
+  }
+  .masthead::after{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(90deg,transparent 0 38px,rgba(255,255,255,.025) 38px 40px);
+    pointer-events:none;
+  }
+  .grade-tag{
+    display:inline-block;font-family:'Roboto Mono',monospace;font-weight:700;
+    font-size:12px;letter-spacing:.18em;color:var(--turf-deep);
+    background:var(--gold);padding:3px 10px;border-radius:2px;margin-bottom:10px;
+  }
+  .race-title{
+    font-family:'Shippori Mincho',serif;font-weight:800;
+    font-size:34px;line-height:1.1;letter-spacing:.02em;
+  }
+  .race-meta{
+    margin-top:8px;font-family:'Roboto Mono',monospace;font-size:13px;
+    color:#cdbf9e;letter-spacing:.04em;
+  }
+  .race-meta b{color:var(--paper)}
+ 
+  .wrap{max-width:760px;margin:0 auto;padding:0 16px}
+ 
+  /* ===== セクション見出し ===== */
+  .sec-head{
+    display:flex;align-items:baseline;gap:10px;
+    margin:36px 0 16px;padding-bottom:8px;
+    border-bottom:2px solid var(--ink);
+  }
+  .sec-num{font-family:'Roboto Mono',monospace;font-weight:700;font-size:13px;color:var(--gold)}
+  .sec-title{font-family:'Shippori Mincho',serif;font-weight:800;font-size:21px}
+  .sec-sub{margin-left:auto;font-size:11px;color:var(--slate);font-family:'Roboto Mono',monospace}
+ 
+  /* ===== 印一覧 ===== */
+  .marks{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .mark-card{
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    padding:12px 13px;position:relative;
+    box-shadow:0 1px 0 rgba(0,0,0,.03);
+  }
+  .mark-card .glyph{
+    font-family:'Shippori Mincho',serif;font-size:26px;font-weight:800;line-height:1;
+  }
+  .mark-card .num{
+    position:absolute;top:11px;right:12px;
+    font-family:'Roboto Mono',monospace;font-weight:700;font-size:12px;
+    background:var(--ink);color:var(--paper);
+    width:24px;height:24px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .mark-card .horse{font-weight:700;font-size:15px;margin-top:7px}
+  .mark-card .jockey{font-size:11px;color:var(--slate);margin-top:1px}
+  .mark-card .stats{
+    display:flex;gap:10px;margin-top:9px;padding-top:8px;border-top:1px dashed var(--line);
+    font-family:'Roboto Mono',monospace;font-size:11px;color:var(--slate);
+  }
+  .mark-card .stats b{color:var(--ink);font-size:13px}
+  /* 印ごとの色 */
+  .m-honmei .glyph{color:var(--honmei)}
+  .m-honmei{border-color:var(--honmei);border-width:2px}
+  .m-taikou .glyph{color:var(--turf)}
+  .m-tana   .glyph{color:var(--gold)}
+  .m-renka  .glyph{color:var(--slate)}
+  .m-myoumi .glyph{color:#7a4fa3}
+  .m-keshi  .glyph{color:var(--crimson)}
+  .m-keshi  {opacity:.72;background:var(--paper-2)}
+ 
+  .pace-bar{
+    display:inline-block;font-size:10px;font-family:'Roboto Mono',monospace;
+    padding:1px 7px;border-radius:3px;margin-top:8px;letter-spacing:.05em;
+    background:var(--paper-2);color:var(--slate);
+  }
+ 
+  /* ===== 展開2パターン ===== */
+  .tabs{display:flex;gap:6px;margin-bottom:14px}
+  .tab{
+    flex:1;padding:11px;border:1px solid var(--line);background:var(--paper-2);
+    font-family:'Zen Kaku Gothic New',sans-serif;font-weight:700;font-size:14px;
+    cursor:pointer;border-radius:7px;transition:.15s;color:var(--slate);
+  }
+  .tab[aria-selected="true"]{
+    background:var(--turf-deep);color:var(--paper);border-color:var(--turf-deep);
+  }
+  .pace-panel{display:none}
+  .pace-panel.on{display:block}
+  .pace-card{
+    background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px 17px;
+  }
+  .pace-card h3{font-family:'Shippori Mincho',serif;font-size:17px;margin-bottom:4px}
+  .pace-card .desc{font-size:13px;color:var(--slate);margin-bottom:14px}
+  /* 隊列図 */
+  .formation{
+    background:var(--turf-deep);border-radius:8px;padding:16px 14px;color:var(--paper);
+    font-family:'Roboto Mono',monospace;font-size:12px;position:relative;
+  }
+  .rail{font-size:10px;color:#9fc4ac;letter-spacing:.3em;margin-bottom:8px}
+  .field-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:5px 0}
+  .field-row .lbl{width:46px;font-size:10px;color:#9fc4ac;flex-shrink:0}
+  .runner{
+    background:var(--paper);color:var(--turf-deep);font-weight:700;
+    padding:2px 8px;border-radius:4px;font-size:12px;
+  }
+  .runner.hot{background:var(--gold);color:var(--turf-deep)}
+  .note-line{
+    margin-top:12px;font-size:11px;color:#cdbf9e;
+    font-family:'Zen Kaku Gothic New',sans-serif;line-height:1.5;
+  }
+ 
+  /* ===== 隊列トラック図（3局面） ===== */
+  .track{
+    background:var(--turf-deep);border-radius:8px;padding:14px 12px 12px;
+    margin-top:6px;
+  }
+  .track-legend{
+    display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px;
+    font-family:'Roboto Mono',monospace;font-size:10px;color:#9fc4ac;
+  }
+  .track-legend span{display:flex;align-items:center;gap:4px}
+  .track-legend i{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .lg-pace{background:var(--paper)}
+  .lg-hot{background:var(--gold)}
+  .lg-keshi{background:var(--crimson)}
+ 
+  /* 3局面を横に並べる */
+  .phases{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+  @media(max-width:560px){.phases{grid-template-columns:1fr;gap:14px}}
+ 
+  .phase{position:relative}
+  .phase-head{
+    font-family:'Roboto Mono',monospace;font-size:10px;font-weight:700;
+    color:var(--turf-deep);background:var(--gold);
+    padding:3px 8px;border-radius:3px;display:inline-block;margin-bottom:7px;
+    letter-spacing:.05em;
+  }
+  /* トラックの帯：上端＝内ラチ、下端＝外。縦＝進行方向（上=前/先頭） */
+  .lane{
+    position:relative;background:#27593a;border-radius:6px;
+    height:188px;overflow:hidden;
+    border-top:3px solid #e9e2d0;          /* 内ラチ */
+    border-bottom:1px dashed #4a7d5e;      /* 外側 */
+  }
+  /* 芝の縦縞 */
+  .lane::before{
+    content:"";position:absolute;inset:0;
+    background:repeating-linear-gradient(0deg,transparent 0 22px,rgba(255,255,255,.03) 22px 23px);
+  }
+  .rail-tag,.outer-tag{
+    position:absolute;left:5px;font-family:'Roboto Mono',monospace;
+    font-size:8px;color:#9fc4ac;letter-spacing:.1em;z-index:3;
+  }
+  .rail-tag{top:2px}
+  .outer-tag{bottom:2px}
+  /* 進行方向の矢印（上が先頭） */
+  .dir{
+    position:absolute;right:5px;top:50%;transform:translateY(-50%);
+    font-size:9px;color:#7fae93;writing-mode:vertical-rl;letter-spacing:.15em;z-index:3;
+  }
+  /* 馬チップ：top=前後位置(0=先頭)、left=内外位置 */
+  .chip{
+    position:absolute;transform:translate(-50%,-50%);
+    background:var(--paper);color:var(--turf-deep);font-weight:700;
+    font-size:11px;font-family:'Roboto Mono',monospace;
+    padding:1px 5px;border-radius:4px;white-space:nowrap;z-index:2;
+    box-shadow:0 1px 2px rgba(0,0,0,.3);
+  }
+  .chip.hot{background:var(--gold);color:var(--turf-deep)}
+  .chip.keshi{background:var(--crimson);color:#fff}
+  .phase-note{
+    margin-top:8px;font-size:10.5px;color:#cdbf9e;line-height:1.5;
+    font-family:'Zen Kaku Gothic New',sans-serif;
+  }
+  /* 局面間の矢印（PC時のみ、列の間に） */
+  .phase:not(:first-child)::after{
+    content:"▸";position:absolute;left:-9px;top:96px;
+    color:var(--gold);font-size:13px;
+  }
+  @media(max-width:560px){.phase:not(:first-child)::after{display:none}}
+ 
+  /* ===== 各馬評価テーブル ===== */
+  details.horse{
+    background:#fff;border:1px solid var(--line);border-radius:8px;
+    margin-bottom:8px;overflow:hidden;
+  }
+  details.horse summary{
+    list-style:none;cursor:pointer;padding:12px 14px;
+    display:flex;align-items:center;gap:12px;
+  }
+  details.horse summary::-webkit-details-marker{display:none}
+  .sum-glyph{font-family:'Shippori Mincho',serif;font-size:22px;font-weight:800;width:26px;text-align:center}
+  .sum-name{font-weight:700;font-size:15px}
+  .sum-sub{font-size:11px;color:var(--slate)}
+  .sum-score{
+    margin-left:auto;text-align:right;font-family:'Roboto Mono',monospace;
+  }
+  .sum-score .pt{font-size:22px;font-weight:700}
+  .sum-score .pt-lbl{font-size:9px;color:var(--slate);display:block;letter-spacing:.1em}
+  .chev{color:var(--slate);transition:.2s;font-size:13px}
+  details[open] .chev{transform:rotate(90deg)}
+ 
+  .breakdown{padding:0 14px 14px;border-top:1px dashed var(--line)}
+  .calc{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  .calc td{padding:5px 0;border-bottom:1px solid var(--paper-2)}
+  .calc td:first-child{color:var(--slate)}
+  .calc td:last-child{text-align:right;font-family:'Roboto Mono',monospace;font-weight:500}
+  .calc tr.total td{border-bottom:none;font-weight:700;padding-top:9px}
+  .calc tr.total td:last-child{font-size:16px}
+  .plus{color:var(--turf)}
+  .minus{color:var(--crimson)}
+  .reason{
+    margin-top:11px;padding:10px 12px;background:var(--paper-2);border-radius:6px;
+    font-size:12.5px;line-height:1.6;
+  }
+  .reason.keshi{background:#f6e4e4;border-left:3px solid var(--crimson)}
+  .reason .tag{font-weight:700;font-size:11px;color:var(--crimson);display:block;margin-bottom:3px;letter-spacing:.05em}
+ 
+  /* ===== 買い目 ===== */
+  .bet-split{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:560px){.bet-split{grid-template-columns:1fr}}
+  .bet-col{
+    background:#fff;border:1px solid var(--line);border-radius:8px;padding:15px;
+  }
+  .bet-col h4{
+    font-family:'Shippori Mincho',serif;font-size:16px;margin-bottom:3px;
+    display:flex;align-items:center;gap:7px;
+  }
+  .bet-col .role{font-size:11px;color:var(--slate);margin-bottom:12px}
+  .bet-type{
+    font-family:'Roboto Mono',monospace;font-size:11px;font-weight:700;
+    color:var(--turf-deep);background:var(--paper-2);
+    padding:2px 7px;border-radius:3px;display:inline-block;margin-bottom:5px;
+  }
+  .bet-line{padding:9px 0;border-bottom:1px dashed var(--line)}
+  .bet-line:last-child{border-bottom:none}
+  .bet-formula{font-size:13px;font-weight:500;margin:2px 0}
+  .bet-cost{
+    font-family:'Roboto Mono',monospace;font-size:12px;color:var(--slate);
+    display:flex;justify-content:space-between;margin-top:3px;
+  }
+  .bet-cost b{color:var(--ink)}
+  .bet-total{
+    margin-top:13px;padding-top:11px;border-top:2px solid var(--ink);
+    display:flex;justify-content:space-between;align-items:baseline;
+    font-family:'Roboto Mono',monospace;
+  }
+  .bet-total span{font-size:11px;color:var(--slate)}
+  .bet-total b{font-size:20px;font-weight:700}
+  .warn{
+    margin-top:10px;font-size:11px;color:var(--crimson);
+    background:#f6e4e4;padding:7px 10px;border-radius:5px;line-height:1.5;
+  }
+ 
+  .footer-note{
+    max-width:760px;margin:40px auto 0;padding:14px 18px;text-align:center;
+    font-size:11.5px;color:var(--slate);border-top:1px solid var(--line);
+    line-height:1.7;
+  }
+  .swatch{
+    display:inline-block;background:var(--paper-2);border:1px dashed var(--line);
+    color:var(--slate);font-size:10px;font-family:'Roboto Mono',monospace;
+    padding:2px 8px;border-radius:3px;margin:24px 16px 0;
+  }
+</style>
+</head>
+<body>
+ 
+  <header class="masthead">
+    <div class="wrap" style="padding:0 8px">
+      <span class="grade-tag">G1 · SAMPLE</span>
+      <h1 class="race-title">宝塚記念</h1>
+      <p class="race-meta">阪神 芝2200m（内回り）／古馬G1 ・ <b>6月某日</b> ／ 想定馬場：<b>稍重〜重（雨予報）</b></p>
+    </div>
+  </header>
+ 
+  <span class="swatch">※ これはダミーデータの雛形です。実データに差し替えて使用します。</span>
+ 
+  <main class="wrap">
+ 
+    <!-- 印一覧 -->
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">01</span>
+        <span class="sec-title">印一覧</span>
+        <span class="sec-sub">MARKS</span>
+      </div>
+      <div class="marks">
+ 
+        <div class="mark-card m-honmei">
+          <div class="num">5</div>
+          <div class="glyph">◎</div>
+          <div class="horse">サンプルホース</div>
+          <div class="jockey">川田将雅（継続）</div>
+          <div class="pace-bar">先行 / 内枠</div>
+          <div class="stats"><span>評価 <b>82</b></span><span>R <b>2.4</b></span></div>
+        </div>
+ 
+        <div class="mark-card m-taikou">
+          <div class="num">11</div>
+          <div class="glyph">○</div>
+          <div class="horse">ダミーゲイル</div>
+          <div class="jockey">ルメール（乗替）</div>
+          <div class="pace-bar">差し / 外枠</div>
+          <div class="stats"><span>評価 <b>78</b></span><span>R <b>3.1</b></span></div>
+        </div>
+ 
+        <div class="mark-card m-tana">
+          <div class="num">3</div>
+          <div class="glyph">▲</div>
+          <div class="horse">テストプリンス</div>
+          <div class="jockey">武豊（継続）</div>
+          <div class="pace-bar">先行 / 内枠</div>
+          <div class="stats"><span>評価 <b>71</b></span><span>R <b>2.0</b></span></div>
+        </div>
+ 
+        <div class="mark-card m-renka">
+          <div class="num">8</div>
+          <div class="glyph">△</div>
+          <div class="horse">モックレディ</div>
+          <div class="jockey">戸崎圭太（継続）</div>
+          <div class="pace-bar">差し / 中枠</div>
+          <div class="stats"><span>評価 <b>66</b></span><span>R <b>2.6</b></span></div>
+        </div>
+ 
+        <div class="mark-card m-myoumi">
+          <div class="num">14</div>
+          <div class="glyph">☆</div>
+          <div class="horse">サンプルノヴァ</div>
+          <div class="jockey">横山武史（乗替）</div>
+          <div class="pace-bar">追込 / 外枠</div>
+          <div class="stats"><span>評価 <b>61</b></span><span>R <b>4.2</b></span></div>
+        </div>
+ 
+        <div class="mark-card m-keshi">
+          <div class="num">2</div>
+          <div class="glyph">✕</div>
+          <div class="horse">ダミーボルト</div>
+          <div class="jockey">テン乗り（人気）</div>
+          <div class="pace-bar">逃げ / 内枠</div>
+          <div class="stats"><span>評価 <b>52</b></span><span>R <b>1.3</b></span></div>
+        </div>
+ 
+      </div>
+    </section>
+ 
+    <!-- 展開2パターン -->
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">02</span>
+        <span class="sec-title">展開2パターン</span>
+        <span class="sec-sub">LAST 4F · 隊列</span>
+      </div>
+ 
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" aria-selected="true" data-pace="a">① 前残り型（標準・内前）</button>
+        <button class="tab" role="tab" aria-selected="false" data-pace="b">② 前崩れ型（雨・外差し）</button>
+      </div>
+ 
+      <div class="pace-panel on" data-panel="a">
+        <div class="pace-card">
+          <h3>① 前残り型</h3>
+          <p class="desc">良〜稍重キープ。先行・内が止まらず、◎⑤が好位インから押し切る図。差し・追込は届きにくく押さえ止まり。</p>
+          <div class="track">
+            <div class="track-legend">
+              <span><i class="lg-pace"></i>本線馬</span>
+              <span><i class="lg-hot"></i>注目（伸びる）</span>
+              <span><i class="lg-keshi"></i>消し</span>
+              <span>↑＝先頭 ／ 上端＝内ラチ</span>
+            </div>
+            <div class="phases">
+ 
+              <!-- スタート -->
+              <div class="phase">
+                <span class="phase-head">START</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip"          style="top:14%;left:18%">②</span>
+                  <span class="chip hot"      style="top:28%;left:22%">◎⑤</span>
+                  <span class="chip keshi"    style="top:24%;left:38%">✕②</span>
+                  <span class="chip"          style="top:40%;left:20%">▲③</span>
+                  <span class="chip"          style="top:52%;left:55%">⑪</span>
+                  <span class="chip"          style="top:64%;left:40%">○</span>
+                  <span class="chip"          style="top:70%;left:60%">⑧</span>
+                  <span class="chip"          style="top:84%;left:75%">⑭</span>
+                </div>
+                <p class="phase-note">五分のスタート。◎⑤は内めで好位を確保、☆⑭は後方外から。</p>
+              </div>
+ 
+              <!-- 残り4F -->
+              <div class="phase">
+                <span class="phase-head">残り4F（800m）</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip"          style="top:12%;left:16%">②</span>
+                  <span class="chip hot"      style="top:22%;left:20%">◎⑤</span>
+                  <span class="chip"          style="top:34%;left:24%">▲③</span>
+                  <span class="chip"          style="top:46%;left:50%">⑪</span>
+                  <span class="chip"          style="top:58%;left:42%">○</span>
+                  <span class="chip"          style="top:66%;left:62%">⑧</span>
+                  <span class="chip"          style="top:80%;left:72%">⑭</span>
+                </div>
+                <p class="phase-note">隊列凝縮のまま3〜4角へ。◎⑤は②を見ながら内で脚を温存、⑭は外を回し始める。</p>
+              </div>
+ 
+              <!-- ゴール前 -->
+              <div class="phase">
+                <span class="phase-head">ゴール前</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip hot"      style="top:10%;left:20%">◎⑤</span>
+                  <span class="chip"          style="top:20%;left:26%">▲③</span>
+                  <span class="chip"          style="top:30%;left:46%">⑪</span>
+                  <span class="chip"          style="top:48%;left:18%">②</span>
+                  <span class="chip"          style="top:58%;left:60%">⑧</span>
+                  <span class="chip"          style="top:78%;left:74%">⑭</span>
+                </div>
+                <p class="phase-note">内前が残り◎⑤先頭。▲③が粘り、○⑪が好位から差し込み3着圏。☆⑭は届かず。</p>
+              </div>
+ 
+            </div>
+            <div class="note-line">想定決着：◎⑤ → ▲③ → ○⑪。差し・追込は物理的に届かず押さえ止まり。</div>
+          </div>
+        </div>
+      </div>
+ 
+      <div class="pace-panel" data-panel="b">
+        <div class="pace-card">
+          <h3>② 前崩れ型</h3>
+          <p class="desc">発走前の雨で重馬場・ハイペース。前総崩れで隊列縦長。○⑪・☆⑭の外差しが台頭、◎⑤は粘り込みで残れるか。</p>
+          <div class="track">
+            <div class="track-legend">
+              <span><i class="lg-pace"></i>本線馬</span>
+              <span><i class="lg-hot"></i>注目（伸びる）</span>
+              <span><i class="lg-keshi"></i>消し</span>
+              <span>↑＝先頭 ／ 上端＝内ラチ</span>
+            </div>
+            <div class="phases">
+ 
+              <!-- スタート -->
+              <div class="phase">
+                <span class="phase-head">START</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip keshi"    style="top:12%;left:30%">✕②</span>
+                  <span class="chip"          style="top:26%;left:20%">◎⑤</span>
+                  <span class="chip"          style="top:36%;left:26%">▲③</span>
+                  <span class="chip"          style="top:50%;left:50%">⑧</span>
+                  <span class="chip hot"      style="top:60%;left:58%">○⑪</span>
+                  <span class="chip hot"      style="top:82%;left:78%">☆⑭</span>
+                </div>
+                <p class="phase-note">②が果敢にハナへ＝速い流れ。◎⑤▲③は先行集団、外差し勢は後方で脚を溜める。</p>
+              </div>
+ 
+              <!-- 残り4F -->
+              <div class="phase">
+                <span class="phase-head">残り4F（800m）</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip keshi"    style="top:20%;left:28%">✕②</span>
+                  <span class="chip"          style="top:30%;left:20%">◎⑤</span>
+                  <span class="chip"          style="top:40%;left:26%">▲③</span>
+                  <span class="chip hot"      style="top:52%;left:62%">○⑪</span>
+                  <span class="chip"          style="top:60%;left:48%">⑧</span>
+                  <span class="chip hot"      style="top:74%;left:80%">☆⑭</span>
+                </div>
+                <p class="phase-note">ハイペースで②が一杯に。○⑪が外から進出開始、☆⑭も大外を上がっていく。</p>
+              </div>
+ 
+              <!-- ゴール前 -->
+              <div class="phase">
+                <span class="phase-head">ゴール前</span>
+                <div class="lane">
+                  <span class="rail-tag">内ラチ</span><span class="outer-tag">外</span><span class="dir">進行 ▲</span>
+                  <span class="chip hot"      style="top:10%;left:58%">○⑪</span>
+                  <span class="chip hot"      style="top:22%;left:78%">☆⑭</span>
+                  <span class="chip"          style="top:34%;left:18%">◎⑤</span>
+                  <span class="chip"          style="top:54%;left:26%">▲③</span>
+                  <span class="chip"          style="top:72%;left:46%">⑧</span>
+                  <span class="chip keshi"    style="top:90%;left:30%">✕②</span>
+                </div>
+                <p class="phase-note">外を回した○⑪が抜け出し☆⑭が追う。◎⑤は内で粘り3着圏を死守、②③は失速。</p>
+              </div>
+ 
+            </div>
+            <div class="note-line">想定決着：○⑪ → ☆⑭ → ◎⑤。外差し馬場（係数×-1.0）に振れた場合の妙味狙い。</div>
+          </div>
+        </div>
+      </div>
+    </section>
+ 
+    <!-- 各馬評価 -->
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">03</span>
+        <span class="sec-title">各馬評価</span>
+        <span class="sec-sub">タップで内訳</span>
+      </div>
+ 
+      <details class="horse" open>
+        <summary>
+          <span class="sum-glyph" style="color:var(--honmei)">◎</span>
+          <span>
+            <span class="sum-name">⑤ サンプルホース</span><br>
+            <span class="sum-sub">先行・内枠 ／ 川田将雅（継続）</span>
+          </span>
+          <span class="sum-score"><span class="pt">82</span><span class="pt-lbl">最終評価</span></span>
+          <span class="chev">▶</span>
+        </summary>
+        <div class="breakdown">
+          <table class="calc">
+            <tr><td>ベース点（能力＋適性）</td><td>75</td></tr>
+            <tr><td>馬体重補正（+4kg）</td><td>±0</td></tr>
+            <tr><td>ねじれ補正（R=2.4）</td><td>±0</td></tr>
+            <tr><td>上がり3F補正</td><td class="plus">+2</td></tr>
+            <tr><td>脚質×枠 × バイアス係数（先行内 +3 ×1.0）</td><td class="plus">+5</td></tr>
+            <tr class="total"><td>最終評価点</td><td>82</td></tr>
+          </table>
+          <div class="reason">
+            <span class="tag">採用理由</span>
+            阪神2200の先行・内枠は専用表で最優遇。継続騎乗の川田は内回り持続力戦の信頼度が高い。両パターンとも複勝圏に残る軸最有力。ただし重馬場転換時は粘り込み勝負になるため頭固定は慎重に。
+          </div>
+        </div>
+      </details>
+ 
+      <details class="horse">
+        <summary>
+          <span class="sum-glyph" style="color:var(--turf)">○</span>
+          <span>
+            <span class="sum-name">⑪ ダミーゲイル</span><br>
+            <span class="sum-sub">差し・外枠 ／ ルメール（乗替）</span>
+          </span>
+          <span class="sum-score"><span class="pt">78</span><span class="pt-lbl">最終評価</span></span>
+          <span class="chev">▶</span>
+        </summary>
+        <div class="breakdown">
+          <table class="calc">
+            <tr><td>ベース点</td><td>74</td></tr>
+            <tr><td>馬体重補正（-2kg）</td><td>±0</td></tr>
+            <tr><td>ねじれ補正（R=3.1）</td><td class="plus">+2</td></tr>
+            <tr><td>上がり3F補正</td><td class="plus">+2</td></tr>
+            <tr><td>脚質×枠 × バイアス係数</td><td class="minus">±0</td></tr>
+            <tr class="total"><td>最終評価点</td><td>78</td></tr>
+          </table>
+          <div class="reason">
+            <span class="tag">採用理由</span>
+            乗替だが名手ルメールゆえ割引緩め、むしろ妙味。前崩れ型②なら外差しが決まり最上位に浮上。前残り型①では届かずの懸念があり、馬場依存度が高い。
+          </div>
+        </div>
+      </details>
+ 
+      <details class="horse">
+        <summary>
+          <span class="sum-glyph" style="color:var(--crimson)">✕</span>
+          <span>
+            <span class="sum-name">② ダミーボルト</span><br>
+            <span class="sum-sub">逃げ・内枠 ／ テン乗り（人気）</span>
+          </span>
+          <span class="sum-score"><span class="pt">52</span><span class="pt-lbl">最終評価</span></span>
+          <span class="chev">▶</span>
+        </summary>
+        <div class="breakdown">
+          <table class="calc">
+            <tr><td>ベース点</td><td>58</td></tr>
+            <tr><td>馬体重補正</td><td>±0</td></tr>
+            <tr><td>ねじれ補正（R=1.3）</td><td class="minus">-3</td></tr>
+            <tr><td>上がり3F補正</td><td>±0</td></tr>
+            <tr><td>脚質×枠 × バイアス係数</td><td class="minus">-3</td></tr>
+            <tr class="total"><td>最終評価点</td><td>52</td></tr>
+          </table>
+          <div class="reason keshi">
+            <span class="tag">消し理由</span>
+            R=1.3で単勝人気が突出＝頭固定回避サイン。テン乗りの人気馬で過信禁物。雨で重馬場・ハイペース想定なら逃げ馬は総崩れ筆頭で、前崩れ型②に対して脆い。
+          </div>
+        </div>
+      </details>
+ 
+    </section>
+ 
+    <!-- 買い目 -->
+    <section>
+      <div class="sec-head">
+        <span class="sec-num">04</span>
+        <span class="sec-title">買い目</span>
+        <span class="sec-sub">予算 3,000円 例</span>
+      </div>
+      <div class="bet-split">
+ 
+        <div class="bet-col">
+          <h4>堅実型</h4>
+          <p class="role">三連複・馬連中心 ／ 的中重視</p>
+ 
+          <div class="bet-line">
+            <span class="bet-type">三連複 軸2頭流し</span>
+            <div class="bet-formula">◎⑤・○⑪ → ▲③ △⑧ ☆⑭（相手5頭）</div>
+            <div class="bet-cost"><span>5点 × 100円</span><b>500円</b></div>
+          </div>
+          <div class="bet-line">
+            <span class="bet-type">馬連 軸1頭流し</span>
+            <div class="bet-formula">◎⑤ → ○⑪ ▲③ △⑧ ☆⑭（4頭）</div>
+            <div class="bet-cost"><span>4点 × 100円</span><b>400円</b></div>
+          </div>
+ 
+          <div class="bet-total"><span>合計</span><b>900円</b></div>
+          <div class="warn">3強で配当が低めならトリガミ注意。点数を絞り軸の精度で勝つ。</div>
+        </div>
+ 
+        <div class="bet-col">
+          <h4>穴・強気型</h4>
+          <p class="role">三連単・妙味重視 ／ 前崩れ型に賭ける</p>
+ 
+          <div class="bet-line">
+            <span class="bet-type">三連単 フォーメーション</span>
+            <div class="bet-formula">1着 ◎⑤ ○⑪ → 2着 ◎⑤ ○⑪ ▲③ → 3着 ▲③ △⑧ ☆⑭</div>
+            <div class="bet-cost"><span>10点 × 100円</span><b>1,000円</b></div>
+          </div>
+          <div class="bet-line">
+            <span class="bet-type">三連複 ☆絡め</span>
+            <div class="bet-formula">☆⑭ → ◎⑤ ○⑪ ▲③ △⑧（軸1頭・相手4頭）</div>
+            <div class="bet-cost"><span>6点 × 100円</span><b>600円</b></div>
+          </div>
+ 
+          <div class="bet-total"><span>合計</span><b>1,600円</b></div>
+          <div class="warn">外差し馬場（係数×-1.0）に振れた場合の妙味狙い。馬場確定前は本線にしない。</div>
+        </div>
+ 
+      </div>
+    </section>
+ 
+  </main>
+ 
+  <p class="footer-note">
+    馬場が確定するのは発走直前です。前レースの実馬場（内が止まり外が伸びているか）を必ず確認し、両シナリオを並走させてください。<br>
+    馬券は自己責任です。予算は無理のない範囲で、決めた上限を超えないように。
+  </p>
+ 
+<script>
+  // 展開タブ切替
+  const tabs = document.querySelectorAll('.tab');
+  const panels = document.querySelectorAll('.pace-panel');
+  tabs.forEach(tab=>{
+    tab.addEventListener('click',()=>{
+      tabs.forEach(t=>t.setAttribute('aria-selected', t===tab));
+      const key = tab.dataset.pace;
+      panels.forEach(p=>p.classList.toggle('on', p.dataset.panel===key));
+    });
+  });
+</script>
+</body>
+</html>
