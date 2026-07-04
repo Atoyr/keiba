@@ -109,6 +109,57 @@ def main():
 
     print()
     print("=" * 60)
+    print("■ ベースライン比較（無脳戦略のROI・複勝上限オッズ使用の概算）")
+    print("=" * 60)
+    by_race = defaultdict(list)
+    for p in preds:
+        if p.get("finish_pos") and to_f(p.get("popularity")) is not None:
+            by_race[p["race_id"]].append(p)
+
+    def baseline_roi(label, pop_set):
+        stake = ret = n = hit = 0
+        for rows in by_race.values():
+            for r in rows:
+                pop = to_f(r.get("popularity"))
+                odds = to_f(r.get("place_odds_max"))
+                if pop is None or pop not in pop_set or odds is None:
+                    continue
+                stake += 100
+                n += 1
+                if r.get("in_place") == "1":
+                    ret += odds * 100
+                    hit += 1
+        if stake:
+            print(f"{label}: n={n} 的中 {hit}/{n} 回収率 {ret / stake * 100:.0f}%")
+        else:
+            print(f"{label}: データ不足")
+
+    baseline_roi("1番人気 複勝ベタ買い", {1.0})
+    baseline_roi("1〜3番人気 複勝均等買い", {1.0, 2.0, 3.0})
+    print("※システムの印別回収率（上記）がこのベースラインを上回っているかで付加価値を判定する")
+
+    print()
+    print("=" * 60)
+    print("■ r_adj分離（final_score − r_adj ＝ オッズ非依存のモデル素点）")
+    print("=" * 60)
+    by_mark_adj = defaultdict(list)
+    for p in preds:
+        r_adj = to_f(p.get("r_adj"))
+        final = to_f(p.get("final_score"))
+        if r_adj is not None and final is not None:
+            by_mark_adj[p.get("mark") or "-"].append((final, r_adj))
+    if by_mark_adj:
+        for mark in sorted(by_mark_adj, key=lambda m: order.index(m) if m in order else 99):
+            rows = by_mark_adj[mark]
+            n = len(rows)
+            avg_final = sum(f for f, _ in rows) / n
+            avg_adj = sum(a for _, a in rows) / n
+            print(f"{mark}: n={n} final_score平均 {avg_final:.1f} r_adj平均 {avg_adj:+.1f} モデル素点平均 {avg_final - avg_adj:.1f}")
+    else:
+        print("r_adj記入済みデータなし（記入が進み次第、モデル/市場の寄与分離が可能になる）")
+
+    print()
+    print("=" * 60)
     print("■ ルール別 遵守状況")
     print("=" * 60)
     by_rule = defaultdict(list)
