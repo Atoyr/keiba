@@ -37,7 +37,7 @@
 - `bias_actual` : 当日実バイアス（内前/フラット/外差し）
 - `result_1st` `result_2nd` `result_3rd` : 馬番
 - `payout_sanrentan` / `payout_sanrenpuku` : 確定配当（円）
-- `notes`
+- `notes` : 自由記述。ペース密度（pace_score_pre÷field_size）を必ず併記する（検証待ち仮説6）
 
 ### predictions.csv
 - `race_id` / `horse_no` / `horse_name`
@@ -65,6 +65,7 @@
 
 ### rules_master.csv
 - `rule_id` / `rule_name` / `origin_race`（このルールを生んだレース）/ `added_date`
+- `status` : 現行 / 暫定(n=10判定) / 包含済(RXX)。ゲートで個別チェックするのは現行＋暫定のみ、包含済は上位則経由で担保
 
 ### rule_fires.csv
 - `race_id` / `rule_id`
