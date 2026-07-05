@@ -14,7 +14,7 @@
 keiba/
 ├── README.md                  ← 本ファイル（使い方の入口）
 ├── プロジェクト指示_v2.md      ← 予想手順とゲートの正本（Claude用システム指示）
-├── .claude/skills/keiba-prediction/SKILL.md  ← Claude Code用スキル
+├── SKILL.md                   ← Claude Code用スキル定義（本リポジトリごと .claude/skills/keiba-prediction/ に配置して使う）
 ├── INDEX.md                   ← 注目馬INDEX
 ├── horse/                     ← 個別馬メモ（1馬1ファイル）
 ├── references/                ← 評価体系ナレッジ（点数計算・係数・傾向の正本）
@@ -30,12 +30,17 @@ keiba/
 │   └── 二重予想_統合プロトコル.md      … Opus/Sonnet二重予想（実験・通常運用では使わない）
 ├── assets/
 │   └── race-prediction.html   ← 予想ボードv2雛形（ターフビジョン様式）
+├── tools/                     ← 実行系ツール
+│   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
+│   └── claude_run.sh          … 集計ランナー（GitHub最新main取得→analyze＋backtest実行）
+├── cache/                     ← polite_fetch のキャッシュ・状態（.gitignore対象）
 └── log/                       ← 検証ログ（詳細は log/README.md）
     ├── README.md              … カラム定義・記録原則・運用フロー
     ├── races.csv / predictions.csv / bets.csv
     ├── rules_master.csv       … 失敗則台帳（R01〜。statusで現行/暫定/包含済を管理）
     ├── rule_fires.csv         … ルール発火・遵守の記録
-    └── analyze.py             … 集計（印別成績・ベースライン比較・r_adj分離ほか）
+    ├── analyze.py             … 集計（実際に買った結果：印別成績・ベースライン比較・r_adj分離）
+    └── backtest.py            … 戦略リプレイ（同じログで別戦略なら：印別ベタ買い・頭◎vs◎○ほか）
 ```
 
 ## 使い方
@@ -50,15 +55,39 @@ keiba/
 
 ### 2. Claude Code（リポジトリ直接編集）
 
-リポジトリを開けば `.claude/skills/keiba-prediction/SKILL.md` が自動で認識される。「（レース名）の予想」等で発動し、手順は同じ `プロジェクト指示_v2.md` を読む。Claude.aiとの違いは1点だけ：**ログ追記・ナレッジ更新をClaudeがファイルへ直接行える**（コードブロック出力→手動転記が不要になる）。コミットは内容確認のうえユーザーが行う。
-
-### 3. 集計（n=10単位）
+**このリポジトリ自体をスキルディレクトリとして配置する**（ルート直下の `SKILL.md` がスキル定義になる）：
 
 ```bash
-python3 log/analyze.py
+# 全プロジェクト共通で使う場合
+git clone https://github.com/atoyr/keiba.git ~/.claude/skills/keiba-prediction
+
+# 特定プロジェクト配下で使う場合（サブモジュール or シンボリックリンク）
+git submodule add https://github.com/atoyr/keiba.git .claude/skills/keiba-prediction
 ```
 
-印別複勝率・回収率、R値帯別成績、ルール遵守状況、ベースライン比較（1〜3番人気ベタ買いROI）、r_adj分離（モデル素点と市場補正の切り分け）を出力する。閾値・係数の見直しはこの集計を根拠に行い、n不足での再調整はしない。
+配置後は「（レース名）の予想」等でスキルが発動し、手順は同じ `プロジェクト指示_v2.md` を読む。Claude.aiとの違いは1点だけ：**ログ追記・ナレッジ更新をClaudeがファイルへ直接行える**（コードブロック出力→手動転記が不要になる）。コミット＆pushは内容確認のうえユーザーがスキルディレクトリ内で行う（＝リポジトリの作業コピーがそのままスキル）。
+
+### 3. 集計・バックテスト（n=10単位）
+
+```bash
+bash tools/claude_run.sh            # GitHub最新mainを取得して analyze + backtest を一括実行
+KEIBA_LOCAL=1 bash tools/claude_run.sh   # 手元の作業コピーで実行
+python3 log/analyze.py              # 個別実行（実際に買った結果の集計）
+python3 log/backtest.py [--detail]  # 個別実行（別戦略のリプレイ）
+```
+
+- **analyze.py**：印別複勝率・回収率、R値帯別成績、ルール遵守状況、ベースライン比較、r_adj分離
+- **backtest.py**：印別・R帯別の単勝/複勝ベタ買いROI、三連単フォーメーション頭◎のみ vs ◎○両置きの比較（R12検証）、三連複 軸流し vs BOX。複勝ROIは place_odds_max による**上限推定（楽観値）**
+- **Claude.aiのチャットから直接実行できる**：「集計して」「バックテスト実行」でClaudeがコード実行環境からGitHub最新mainを取得して実行する（ナレッジSyncとは別ルート・Sync now不要）
+- 閾値・係数の見直しはこの集計を根拠に行い、n不足での再調整はしない（n<10は参考値）
+
+### 4. 情報収集（相手サイトに負荷をかけない）
+
+```bash
+python3 tools/polite_fetch.py <URL> [--ttl 秒] [--out file]
+```
+
+キャッシュ最優先（TTL内は実アクセスなし）・ホスト単位の最小間隔8秒＋1日60回上限・robots.txt遵守・429/503はRetry-After遵守。**403等の取得拒否は回避せず撤退**し、動作実績のある代替ソース（JRA公式 / Yahoo競馬denma）へ切り替える方針。ローカル/Claude Code専用（Claude.aiの実行環境は外部サイトへ出られないため、Claude.ai内の取得は従来どおりweb検索）。
 
 ## 運用の絶対原則（抜粋）
 
@@ -68,6 +97,7 @@ python3 log/analyze.py
 - **結果はJRA公式を検索して確認**。チャット記憶からの転記は禁止
 - **不明は不明のまま**。データ取得失敗を推測で埋めない
 - **新しい失敗則・閾値は指示ファイルでなく rules_master.csv と該当ナレッジへ追記**（指示の改訂は工程・ゲート構造が変わるときのみ）
+- **三点同期**：工程・ディレクトリ構成・実行方法を変える変更では、`プロジェクト指示_v2.md`・`README.md`・`SKILL.md` を同じコミットで更新する。指示だけ直してREADME/SKILLが古いままの状態を作らない
 
 ## 免責
 
