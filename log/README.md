@@ -94,7 +94,8 @@
 【予想確定時】races.csv 前半＋predictions.csv（全頭・評価点/R値込み）＋bets.csv を追記
 【結果確定後】着順・配当・払戻・rule_fires.csv の outcome を記入
 【コミット】UCHIYAMA が commit → Sync now
-【10レース毎】python3 log/analyze.py で集計 → 閾値・係数の見直しをチャットで実施
+【10レース毎】python3 log/analyze.py / backtest.py で集計 →
+  Claude.aiからは「バックテスト実行」でGitHub最新mainを直接取得して実行可
 ```
 
 **ルールゲートの根拠：** バックフィル3レースで、ルール遵守2件はどちらも成功、違反6件はすべて失敗だった。事後の振り返りでは違反を防げないため、予想確定前の機械的チェックを必須工程とする。
