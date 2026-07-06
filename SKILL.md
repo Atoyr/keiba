@@ -20,7 +20,7 @@ Claude.aiプロジェクト運用との違いはログの書き込み方だけ�
 - **ログはファイルへ直接追記する**：`log/races.csv` `log/predictions.csv` `log/bets.csv` `log/rule_fires.csv`。コードブロック出力→手動転記のフローは不要
 - 追記前に各CSVのカラム定義を `log/README.md` で確認する（列順・記録原則・「予想は最終版のみ」「全頭記録」「数値列空欄はゲートFAIL」）
 - ナレッジ更新（ルール追加・傾向追記・馬メモ）も該当ファイルへ直接編集してよいが、**編集内容は必ずチャットで要約提示**し、コミットはユーザーが行う
-- 集計は `bash tools/claude_run.sh`（analyze＋backtest一括。手元コピーで走らせるなら `KEIBA_LOCAL=1` を付ける）。個別実行は `python3 log/analyze.py` / `python3 log/backtest.py`。backtestの複勝ROIは place_odds_max による上限推定（楽観値）、n<10は参考値でルール改廃根拠にしない
+- 集計は `bash tools/claude_run.sh`（validate＋analyze＋backtest一括。手元コピーで走らせるなら `KEIBA_LOCAL=1` を付ける）。個別実行は `python3 log/validate.py` / `python3 log/analyze.py` / `python3 log/backtest.py`。backtestの複勝ROIは place_odds_max による上限推定（楽観値）、n<10は参考値でルール改廃根拠にしない
 - オッズ・出馬表・結果の取得は `python3 tools/polite_fetch.py <URL>` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、JRA公式 / Yahoo競馬denma へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v2.md` に従う
 - 指示・工程・構成に触れる編集をしたら、`README.md` と本 `SKILL.md` の該当箇所も同じ編集で更新する（三点同期）
 

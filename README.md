@@ -32,7 +32,7 @@ keiba/
 │   └── race-prediction.html   ← 予想ボードv2雛形（ターフビジョン様式）
 ├── tools/                     ← 実行系ツール
 │   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
-│   └── claude_run.sh          … 集計ランナー（GitHub最新main取得→analyze＋backtest実行）
+│   └── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
 ├── cache/                     ← polite_fetch のキャッシュ・状態（.gitignore対象）
 └── log/                       ← 検証ログ（詳細は log/README.md）
     ├── README.md              … カラム定義・記録原則・運用フロー
@@ -70,7 +70,7 @@ git submodule add https://github.com/atoyr/keiba.git .claude/skills/keiba-predic
 ### 3. 集計・バックテスト（n=10単位）
 
 ```bash
-bash tools/claude_run.sh            # GitHub最新mainを取得して analyze + backtest を一括実行
+bash tools/claude_run.sh            # GitHub最新mainを取得して validate + analyze + backtest を一括実行
 KEIBA_LOCAL=1 bash tools/claude_run.sh   # 手元の作業コピーで実行
 python3 log/analyze.py              # 個別実行（実際に買った結果の集計）
 python3 log/backtest.py [--detail]  # 個別実行（別戦略のリプレイ）

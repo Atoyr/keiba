@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # claude_run.sh — 集計・バックテストのランナー（Claude.ai コンテナ／ローカル共通）
 #
-# GitHub の最新 main を取得して log/analyze.py と log/backtest.py を実行する。
+# GitHub の最新 main を取得して log/validate.py → log/analyze.py → log/backtest.py を実行する。
 # Claude.ai のコード実行コンテナは GitHub への通信が許可されているため、
 # プロジェクトナレッジの Sync 状態と無関係に常に最新コミットで集計できる。
 #
 # 使い方:
-#   bash tools/claude_run.sh              # analyze + backtest
+#   bash tools/claude_run.sh              # validate + analyze + backtest
 #   bash tools/claude_run.sh --detail     # backtest にレース別内訳を渡す
 #   KEIBA_LOCAL=1 bash tools/claude_run.sh  # 取得せず手元の作業コピーで実行
 set -euo pipefail
@@ -21,8 +21,16 @@ else
   rm -rf "$WORK"; mkdir -p "$WORK"
   echo "== GitHub 最新 main を取得 =="
   curl -sL "$REPO_TAR" | tar xz -C "$WORK" --strip-components=1
-  COMMIT_DATE=$(ls -ld "$WORK/log" | awk '{print $6, $7, $8}')
   echo "   取得完了 ($WORK)"
+fi
+
+echo
+echo "================ validate.py ==============="
+VALIDATE_FAIL=0
+if [ -f "$WORK/log/validate.py" ]; then
+  python3 "$WORK/log/validate.py" || VALIDATE_FAIL=1
+else
+  echo "[skip] log/validate.py が main に未コミット。"
 fi
 
 echo
@@ -35,4 +43,11 @@ if [ -f "$WORK/log/backtest.py" ]; then
   python3 "$WORK/log/backtest.py" "$@"
 else
   echo "[skip] log/backtest.py が main に未コミット。コミット後に再実行を。"
+fi
+
+if [ "$VALIDATE_FAIL" = "1" ]; then
+  echo
+  echo "!!! validate.py がERRORを検出（R22）。上記集計は不整合データを含む参考値。"
+  echo "!!! 修正するまで新規の印・買い目を確定しないこと。"
+  exit 1
 fi
