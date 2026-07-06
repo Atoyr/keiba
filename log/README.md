@@ -12,6 +12,7 @@
 | `rules_master.csv` | ルール台帳 | ルール追加時 |
 | `rule_fires.csv` | 1レース×1ルール = 1行 | 振り返り時 |
 | `analyze.py` | 集計スクリプト | 任意（python3 analyze.py で実行） |
+| `validate.py` | 検証スクリプト | 予想確定前・振り返り後に python3 validate.py（ERROR=ゲートFAIL級） |
 
 ## 記録の原則
 

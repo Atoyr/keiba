@@ -175,6 +175,67 @@ def main():
         oc = " / ".join(f"{k}:{v}" for k, v in outcomes.items())
         print(f"{rid} {rules.get(rid, '')[:30]}: 発火 {len(fired)} 遵守 {followed}/{len(fired)} [{oc}]")
 
+    print()
+    print("=" * 60)
+    print("■ 較正カウンタ（n=10でレビュー発動・R19）")
+    print("=" * 60)
+    rules_full = load("rules_master.csv")
+    # 結果確定済みレース（paper含む）= 較正サンプル
+    done = [r for r in races if r.get("result_1st")]
+    n_total = len(done)
+    n_paper = sum(1 for r in done if (r.get("notes") or "").strip().lower().startswith("paper"))
+    done_ids = {r["race_id"] for r in done}
+    name_by_id = {r["race_id"]: r.get("race_name", "") for r in races}
+
+    # 暫定ルールの発火数（R17: origin_raceを検証サンプルに数えない）
+    prov = [r for r in rules_full if (r.get("status") or "").startswith("暫定")]
+    prov_lines = []
+    for rule in prov:
+        rid_ = rule["rule_id"]
+        origin = rule.get("origin_race") or ""
+        cnt = 0
+        oc = {}
+        for f_ in fires:
+            if f_.get("rule_id") != rid_ or f_.get("fired") != "1":
+                continue
+            rname = name_by_id.get(f_.get("race_id"), "")
+            if rname and rname in origin:  # 生成元レースは除外（R17）
+                continue
+            cnt += 1
+            o = f_.get("outcome") or "?"
+            oc[o] = oc.get(o, 0) + 1
+        ocs = " ".join(f"{k}:{v}" for k, v in oc.items()) or "-"
+        judge = ""
+        if cnt >= 5:
+            neg = oc.get("逆効果", 0) + oc.get("違反したが結果OK", 0)
+            pos = oc.get("効いた", 0)
+            judge = " ★判定可能" + ("（降格候補: 逆効果≧効いた）" if neg >= pos and neg > 0 else "")
+        prov_lines.append(f"  {rid_}発火 {cnt}件 [{ocs}]{judge}")
+
+    # R13はG1のみの別トラック
+    g1_done = sum(1 for r in done if "G1" in (r.get("grade") or "").upper().replace("GI", "G1"))
+
+    # ☆的中
+    star = [p for p in preds if (p.get("mark") or "").strip() == "☆" and p.get("finish_pos")]
+    star_hit = sum(1 for p in star if p.get("in_place") == "1")
+
+    # 半減版帯域ズレ（races.csv notes に「帯域ズレ」を含む行を宣言としてカウント）
+    zure = sum(1 for r in done if "帯域ズレ" in (r.get("notes") or ""))
+
+    print(f"全体 n={n_total}/10（うちpaper {n_paper}） ｜ R13(G1) {g1_done}/10 ｜ "
+          f"☆的中 {star_hit}/{len(star)} ｜ 半減版帯域ズレ {zure}回")
+    print("暫定ルール発火（生成元レース除外・R17）:")
+    for line in prov_lines:
+        print(line)
+    if n_total >= 10:
+        print("-" * 60)
+        print("★★ n=10 到達：較正レビューを発動する（R19手順） ★★")
+        print("  1. validate.py → analyze.py → backtest.py を実行")
+        print("  2. 発火5件以上かつ 逆効果≧効いた の暫定ルールを降格/廃止判定")
+        print("  3. 検証待ち仮説1〜8・R値/妙味/荒れ度の閾値を一括判定（log/README.md）")
+    else:
+        print(f"→ レビューまで残り {10 - n_total} レース（ペーパー予想で加速可）")
+
 
 if __name__ == "__main__":
     main()
