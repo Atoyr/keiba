@@ -16,15 +16,19 @@ keiba/
 ├── プロジェクト指示_v2.md      ← 予想手順とゲートの正本（Claude用システム指示）
 ├── SKILL.md                   ← Claude Code用スキル定義（本リポジトリごと .claude/skills/keiba-prediction/ に配置して使う）
 ├── INDEX.md                   ← 注目馬INDEX
+├── ロードマップ_Opus運用設計_v1.md ← 精度向上・仕組み拡張のメタ設計（Opusレビュー担当の作業台帳。工程は変えない）
 ├── horse/                     ← 個別馬メモ（1馬1ファイル）
 ├── references/                ← 評価体系ナレッジ（点数計算・係数・傾向の正本）
 │   ├── 競馬予想_評価ルール.md          … ベース点×合成係数＋加算層・R値・妙味スコア（v3）
 │   ├── コース別_脚質枠_補正表*.md      … コース適性係数・枠補正・妙味係数（夏開催追記版）
+│   ├── コース傾向_調査手順.md          … 新規コース収録の固定工程C0〜C6（未整備コース検知時に発動）
 │   ├── レース別_過去傾向データ.md      … 重賞ごとの過去傾向
 │   ├── 騎手データ_扱いルール.md
 │   ├── 血統データ_扱いルール.md        … ±3上限・適性フィルター限定
 │   ├── 荒れ度_買い目配分表.md          … 荒れ度スコア→帯域→買い目配分の正本
+│   ├── 買い目_点数早見表.md            … 三連複/三連単/馬連/馬単の点数・予算別早見（v2）
 │   ├── 最後の4F_隊列シミュレーション手順.md
+│   ├── 振り返り手順.md                … 結果確定後の固定工程V0〜V7（層別採点・反実仮想・教訓ルーティング）
 │   ├── 予想ボード_出力ルール.md        … HTMLボード（全頭掲載）の出力仕様
 │   ├── 予想評論_エージェントルール.md  … 独立検証エージェント（本予想を疑う側）
 │   ├── 週次運用スケジュール.md          … 週パターン別ルーティン・マネジメントチェック
@@ -33,13 +37,15 @@ keiba/
 │   └── race-prediction.html   ← 予想ボードv2雛形（ターフビジョン様式）
 ├── tools/                     ← 実行系ツール
 │   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
-│   └── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
-├── cache/                     ← polite_fetch のキャッシュ・状態（.gitignore対象）
+│   ├── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
+│   └── patch_radj.py          … r_adj遡及記入の一回限りパッチ（適用済み。削除してよい）
+├── cache/                     ← polite_fetch のキャッシュ・状態（実行時に生成。コミットしない）
 └── log/                       ← 検証ログ（詳細は log/README.md）
     ├── README.md              … カラム定義・記録原則・運用フロー
     ├── races.csv / predictions.csv / bets.csv
     ├── rules_master.csv       … 失敗則台帳（R01〜。statusで現行/暫定/包含済を管理）
     ├── rule_fires.csv         … ルール発火・遵守の記録
+    ├── validate.py            … CSVスキーマ検証（ERROR＝ゲートFAIL級を機械チェック）
     ├── analyze.py             … 集計（実際に買った結果：印別成績・ベースライン比較・r_adj分離）
     └── backtest.py            … 戦略リプレイ（同じログで別戦略なら：印別ベタ買い・頭◎vs◎○ほか）
 ```
@@ -53,6 +59,7 @@ keiba/
 3. チャットで「（レース名）の予想」と依頼 → 指示の工程0〜12が走る（冒頭に計画宣言ブロックが出る）
 4. Claudeはログ追記行を**コードブロックで出力**する（Syncは読み取り専用のため）。ユーザーがローカルでCSVに追記 → commit → プロジェクト側で **Sync now**
 5. 結果確定後は「（レース名）の振り返り」→ references/振り返り手順.md のV0〜V7で層別採点・反実仮想・教訓ルーティングまで実行される
+6. n=10到達時のレビューや閾値・係数の改訂判断は「較正レビュー」「設計セッション」で開始 → `ロードマップ_Opus運用設計_v1.md` の該当Phaseに沿って進める（担当はOpus。週次の予想実行とは分離）
 
 ### 2. Claude Code（リポジトリ直接編集）
 
@@ -73,10 +80,12 @@ git submodule add https://github.com/atoyr/keiba.git .claude/skills/keiba-predic
 ```bash
 bash tools/claude_run.sh            # GitHub最新mainを取得して validate + analyze + backtest を一括実行
 KEIBA_LOCAL=1 bash tools/claude_run.sh   # 手元の作業コピーで実行
+python3 log/validate.py             # 個別実行（CSVスキーマ検証。ERRORありなら終了コード1）
 python3 log/analyze.py              # 個別実行（実際に買った結果の集計）
 python3 log/backtest.py [--detail]  # 個別実行（別戦略のリプレイ）
 ```
 
+- **validate.py**：ログCSVの機械検証。[ERROR]＝ゲートFAIL級（この状態で予想・買い目を確定しない）、[WARN]＝記録不備。claude_run.sh の先頭でも実行され、ERROR検出時は後続集計を参考値扱いにする（R22）
 - **analyze.py**：印別複勝率・回収率、R値帯別成績、ルール遵守状況、ベースライン比較、r_adj分離
 - **backtest.py**：印別・R帯別の単勝/複勝ベタ買いROI、三連単フォーメーション頭◎のみ vs ◎○両置きの比較（R12検証）、三連複 軸流し vs BOX。複勝ROIは place_odds_max による**上限推定（楽観値）**
 - **Claude.aiのチャットから直接実行できる**：「集計して」「バックテスト実行」でClaudeがコード実行環境からGitHub最新mainを取得して実行する（ナレッジSyncとは別ルート・Sync now不要）
