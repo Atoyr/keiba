@@ -46,7 +46,30 @@ races.csv / predictions.csv / rule_fires.csv は通常どおり全記入、bets.
 - `bias_actual` : 当日実バイアス（内前/フラット/外差し）
 - `result_1st` `result_2nd` `result_3rd` : 馬番
 - `payout_sanrentan` / `payout_sanrenpuku` : 確定配当（円）
-- `notes` : 自由記述。ペース密度（pace_score_pre÷field_size）を必ず併記する（検証待ち仮説6）
+- `notes` : 自由記述。ペース密度（pace_score_pre÷field_size）を必ず併記する（検証待ち仮説6）。**冒頭に宣言タグ（下記）を置く**
+
+#### 宣言タグ規約（races.csv の notes 冒頭・validate.py の突合対象）
+
+買い目の宣言（帯域・配分・予算）と実装（bets.csv）の乖離を機械検出するため、notes 冒頭に以下を1行で置く。書式は `キー=値` を ` / ` 区切り。
+
+```
+band=中 / 荒れ度=5 / 券種=三連複+三連単F / 堅実穴=40:60 / 予算=2500 / 計画総額=2400
+```
+
+| タグ | 内容 | validate の扱い |
+|---|---|---|
+| `band` | 荒れ度帯域（低/中/高） | 未決レースで bets があるのに欠落 → **ERROR** |
+| `荒れ度` | 荒れ度スコアの数値 | 記録のみ |
+| `券種` | 計画した券種を `+` 連結 | bets の bet_type 集合と不一致 → **ERROR**（`乖離理由=` があれば WARN） |
+| `堅実穴` | 予算比（例 `40:60`） | bets.notes の `side=` が全行揃っていれば実配分と比較し、10ポイント超の差で WARN |
+| `予算` | 宣言予算（円） | 実購入合計が超過 → **ERROR** |
+| `計画総額` | 計画した購入総額（円） | 実購入合計と不一致 → **ERROR**（`乖離理由=` があれば WARN） |
+| `乖離理由` | 計画と実購入がずれた理由 | 券種欠落・金額差を WARN に降格する唯一の手段 |
+
+- **無断の乖離は ERROR。** 買わなかった券種・減額は必ず `乖離理由=` を書く（計画4券種→実購入3券種、計画9,800円→実購入1,200円という過去2件の事故がこのチェックの起点）
+- `going` に確定値を入れたまま notes に「未確定/暫定」と書き残すのは WARN（どちらかに揃える）
+- **bets.csv の notes** には `side=堅実` または `side=穴` を付ける（配分チェックの入力）
+- **rule_fires.csv の notes** には判定時に参照した馬場を `as_of=重` の形で残す。確定 `going` と不一致なら WARN（旧前提のnotes残存を検出）
 
 ### predictions.csv
 - `race_id` / `horse_no` / `horse_name`

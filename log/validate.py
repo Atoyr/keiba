@@ -3,6 +3,8 @@
 """ログCSV検証スクリプト（P0-1）。log/ で python3 validate.py を実行。標準ライブラリのみ。
 
 チェック内容（log/README.md の記録原則を機械化）:
+  スキーマ / 数値ゲート / 印の頭数(R15) / 積み上げ検算 / 点数×単価(R16)
+  ＋ 宣言と実装の突合（帯域・配分タグ ↔ bets、計画総額 ↔ 実購入、as_of ↔ 確定馬場）
   [ERROR] = ゲートFAIL級。予想・買い目を確定してはいけない状態
   [WARN]  = 記録不備。次の追記時に直す
 終了コード: ERRORが1件でもあれば 1、なければ 0
@@ -58,6 +60,12 @@ def to_f(v):
         return float(v)
     except (TypeError, ValueError):
         return None
+
+
+def tag(text, key):
+    """notes から `key=値` を取り出す。区切りは / ／ 空白 読点。無ければ None。"""
+    m = re.search(key + r"\s*[=＝:：]\s*([^/／、,\s]+)", text or "")
+    return m.group(1).strip() if m else None
 
 
 def load(name):
@@ -200,6 +208,69 @@ def main():
         if None not in (pts, unit, c) and abs(pts * unit - c) > 0.01:
             err(f"bets.csv [{rid}]: 点数×単価≠金額 ({pts}×{unit}≠{c}) R16検算")
 
+    # ---- 宣言と実装の突合（races.notes の宣言タグ ↔ bets） ----
+    # 宣言タグ書式（log/README.md が正本）:
+    #   band=中 / 荒れ度=5 / 券種=三連複+三連単F / 堅実穴=40:60 / 予算=2500 / 計画総額=2400
+    # 乖離を許容する場合は notes に 乖離理由=... を書く（無断の乖離は ERROR）
+    for rid, r in race_by_id.items():
+        notes = r.get("notes") or ""
+        rbets = bets_by_race.get(rid, [])
+        decided = bool(r.get("result_1st"))
+        band = tag(notes, "band")
+        plan_total = to_f(tag(notes, "計画総額"))
+        reason = tag(notes, "乖離理由")
+
+        # (1) 未決レースで買い目があるのに宣言タグが無い＝宣言行なしの買い目（確定禁止）
+        if rbets and not decided and (band is None or plan_total is None):
+            err(f"races.csv [{rid}]: 買い目があるのに宣言タグ不足（band= / 計画総額= が必要・宣言行なしの買い目は確定禁止）")
+
+        if not rbets:
+            continue
+        actual_total = sum(to_f(b.get("cost")) or 0 for b in rbets)
+
+        # (2) 券種構成：宣言と実購入の集合差（券種の無断欠落＝過去2レースの失敗パターン）
+        kenshu = tag(notes, "券種")
+        if kenshu:
+            declared = {k.strip() for k in kenshu.split("+") if k.strip()}
+            actual = {(b.get("bet_type") or "").strip() for b in rbets}
+            missing = declared - actual
+            extra = actual - declared
+            if missing or extra:
+                detail = (f"未購入 {sorted(missing)}" if missing else "") + \
+                         (" / " if missing and extra else "") + \
+                         (f"宣言外 {sorted(extra)}" if extra else "")
+                msg = f"races.csv [{rid}]: 宣言券種と実購入が不一致 → {detail}"
+                (warn if reason else err)(msg + ("（乖離理由あり）" if reason else "（乖離理由= を notes に記載するか買い目を直す）"))
+
+        # (3) 計画総額 ↔ 実購入額
+        if plan_total is not None and abs(plan_total - actual_total) > 0.01:
+            msg = f"races.csv [{rid}]: 計画総額 {plan_total:.0f}円 ≠ 実購入 {actual_total:.0f}円"
+            (warn if reason else err)(msg + ("（乖離理由あり）" if reason else "（乖離理由= を notes に記載する）"))
+
+        # (4) 予算超過
+        budget = to_f(tag(notes, "予算"))
+        if budget is not None and actual_total > budget + 0.01:
+            err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が宣言予算 {budget:.0f}円 を超過")
+
+        # (5) 堅実:穴の配分（bets.notes の side=堅実/穴 タグが全行に揃っている場合のみ判定）
+        ratio = tag(notes, "堅実穴")
+        sides = [tag(b.get("notes") or "", "side") for b in rbets]
+        if ratio and ":" in ratio and all(x in ("堅実", "穴") for x in sides):
+            try:
+                d_kata, d_ana = (float(x) for x in ratio.split(":", 1))
+            except ValueError:
+                d_kata = d_ana = None
+            if d_kata is not None and actual_total > 0 and (d_kata + d_ana) > 0:
+                a_kata = sum((to_f(b.get("cost")) or 0) for b, s_ in zip(rbets, sides) if s_ == "堅実")
+                act_pct = a_kata / actual_total * 100
+                dec_pct = d_kata / (d_kata + d_ana) * 100
+                if abs(act_pct - dec_pct) > 10:
+                    warn(f"races.csv [{rid}]: 堅実:穴の宣言 {dec_pct:.0f}% と実配分 {act_pct:.0f}% が10ポイント超乖離")
+
+        # (6) 馬場の確定表記と notes の未確定表記の食い違い
+        if r.get("going") and re.search(r"(未確定|暫定)", notes) and not decided:
+            warn(f"races.csv [{rid}]: going={r.get('going')} を確定値で記録しつつ notes に未確定/暫定の記述あり（どちらかに揃える）")
+
     # ---- rules_master ----
     rule_ids = set()
     for i, r in enumerate(rules, 2):
@@ -222,6 +293,12 @@ def main():
                 err(f"rule_fires.csv 行{i}: {c} は 0/1/空のみ")
         if (f_.get("outcome") or "") not in VALID_OUTCOMES:
             warn(f"rule_fires.csv 行{i}: 未知の outcome '{f_.get('outcome')}'")
+        # 鮮度: 参照した馬場宣言(as_of=)が確定馬場と食い違ったまま残っていないか
+        if rid in race_by_id:
+            as_of = tag(f_.get("notes") or "", "as_of")
+            going = (race_by_id[rid].get("going") or "").strip()
+            if as_of and going and as_of != going:
+                warn(f"rule_fires.csv [{rid} {rl}]: as_of={as_of} が確定馬場 {going} と不一致（旧前提のnotesが残存）")
         # ゲートの本丸: followed=0 のまま買おうとしていないか。
         # 結果確定済みレースの違反は「記録された過去」であり outcome 列で追跡済み → スキップ
         if (f_.get("fired") == "1" and f_.get("followed") == "0"
