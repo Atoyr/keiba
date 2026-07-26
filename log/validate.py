@@ -20,6 +20,10 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 # README記載のバックフィル3レース（数値欠損を例外として容認・集計参考外）
 EXEMPT_RACES = {"2026_sakitama_hai", "2026_hakodate_kinen", "2026_radio_nikkei"}
 
+# 予算ガード（log/README.md 記録の原則9）。制定日より前のレースは対象外
+RACE_BUDGET_CAP = 3000
+BUDGET_GUARD_FROM = "2026-07-27"
+
 EXPECTED_HEADERS = {
     "races.csv": ["race_id", "date", "race_name", "grade", "course", "field_size",
                   "going", "cushion", "pace_score_pre", "pace_flag_pre", "pace_actual",
@@ -251,6 +255,13 @@ def main():
         budget = to_f(tag(notes, "予算"))
         if budget is not None and actual_total > budget + 0.01:
             err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が宣言予算 {budget:.0f}円 を超過")
+
+        # (4-b) 予算ガード：1レース上限3,000円（2026-07-27制定・制定前レースは対象外）
+        if (r.get("date") or "") >= BUDGET_GUARD_FROM:
+            if actual_total > RACE_BUDGET_CAP + 0.01:
+                err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（予算ガード）")
+            if budget is not None and budget > RACE_BUDGET_CAP + 0.01:
+                err(f"races.csv [{rid}]: 宣言予算 {budget:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（予算ガード）")
 
         # (5) 堅実:穴の配分（bets.notes の side=堅実/穴 タグが全行に揃っている場合のみ判定）
         ratio = tag(notes, "堅実穴")
