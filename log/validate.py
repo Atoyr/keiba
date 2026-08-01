@@ -5,6 +5,7 @@
 チェック内容（log/README.md の記録原則を機械化）:
   スキーマ / 数値ゲート / 印の頭数(R15) / 積み上げ検算 / 点数×単価(R16)
   ＋ 宣言と実装の突合（帯域・配分タグ ↔ bets、計画総額 ↔ 実購入、as_of ↔ 確定馬場）
+  ＋ 印と買い目の整合（消し馬の採用 / 印を付けた馬の不在 / 消し記号の表記ゆれ）
   [ERROR] = ゲートFAIL級。予想・買い目を確定してはいけない状態
   [WARN]  = 記録不備。次の追記時に直す
 終了コード: ERRORが1件でもあれば 1、なければ 0
@@ -45,6 +46,28 @@ NUM_COLS_ODDS_DEPENDENT = ["r_adj", "r_value"]
 
 VALID_MARKS = {"◎", "○", "▲", "△", "☆", "✕", "x", "-", ""}
 SINGLE_MARKS = ["◎", "○", "▲", "△"]  # 各1頭（R15）。✕/xは消しとして同枠
+
+# 消し＝買い目に一切採用しない馬。log/README.md 記録原則4により正規形は "x"
+KESHI_MARKS = {"✕", "x", "×", "X"}
+CANONICAL_KESHI = "x"
+# 買い目に現れることが期待される印（複勝圏以上を想定して付けた印）
+BOUGHT_MARKS = {"◎", "○", "▲", "△", "☆"}
+
+# bets.structure から馬番を取り出すためのノイズ除去（"軸1頭" "3着" "（新規5点）" 等）
+_NOISE_PATTERNS = [
+    re.compile(r"[（(][^）)]*点[^）)]*[）)]"),  # （新規5点）
+    re.compile(r"\d+\s*点"),                    # 15点
+    re.compile(r"軸\d+頭"),                     # 軸1頭 / 軸2頭
+    re.compile(r"\d+\s*着"),                    # 1着 / 2着 / 3着
+]
+
+
+def bet_horses(structure):
+    """買い目の structure 文字列から馬番の集合を返す（1〜18のみ採用）。"""
+    s = structure or ""
+    for pat in _NOISE_PATTERNS:
+        s = pat.sub(" ", s)
+    return {int(x) for x in re.findall(r"\d+", s) if 1 <= int(x) <= 18}
 VALID_OUTCOMES = {"効いた", "逆効果", "中立", "違反して失敗", "違反したが結果OK", ""}
 VALID_STATUS = re.compile(r"^(現行|暫定.*|包含済.*|廃止.*)$")
 
@@ -185,8 +208,13 @@ def main():
                 err(f"predictions.csv [{rid}]: {m} が{cnt[m]}頭（R15: 各1頭）")
         if cnt["☆"] > 2:
             err(f"predictions.csv [{rid}]: ☆ が{cnt['☆']}頭（R15: 最大2頭）")
-        if cnt["✕"] + cnt["x"] > 1:
-            warn(f"predictions.csv [{rid}]: 消しが{cnt['✕'] + cnt['x']}頭（指示は✕各1頭・意図的なら容認）")
+        keshi_n = sum(cnt[m] for m in KESHI_MARKS)
+        if keshi_n > 1:
+            warn(f"predictions.csv [{rid}]: 消しが{keshi_n}頭（指示は各1頭・意図的なら容認）")
+        for m in KESHI_MARKS - {CANONICAL_KESHI}:
+            if cnt[m]:
+                warn(f"predictions.csv [{rid}]: 消し記号 '{m}' が{cnt[m]}件"
+                     f"（log/README.md 記録原則4の正規形は '{CANONICAL_KESHI}'・表記を揃える）")
         fs = to_f(race_by_id[rid].get("field_size"))
         if fs is not None and len(rows) < fs and rid not in EXEMPT_RACES:
             err(f"predictions.csv [{rid}]: 記録{len(rows)}頭 < 出走{int(fs)}頭（記録原則5: 全頭記録）")
@@ -211,6 +239,36 @@ def main():
         pts, unit = to_f(b.get("points")), to_f(b.get("unit"))
         if None not in (pts, unit, c) and abs(pts * unit - c) > 0.01:
             err(f"bets.csv [{rid}]: 点数×単価≠金額 ({pts}×{unit}≠{c}) R16検算")
+
+    # ---- 印と買い目の整合 ----
+    # 『競馬予想_評価ルール.md』第8項の区分は 軸/対抗/押さえ/消し。消し＝買い目に採用しない馬。
+    # R09（R<1.5は頭固定回避のみで複勝圏除外にしない）で紐に残す馬は「押さえ＝△」であり消しではない。
+    # 2026_ibis_sd で ✕ を付けた馬を三連複の相手に採用する不整合が発生したため機械検出に移した。
+    for rid, rows in preds_by_race.items():
+        if rid in EXEMPT_RACES:
+            continue
+        rbets = bets_by_race.get(rid, [])
+        if not rbets:
+            continue  # ペーパー等、買い目のないレースは対象外
+        bought = set()
+        for b in rbets:
+            bought |= bet_horses(b.get("structure"))
+        if not bought:
+            warn(f"bets.csv [{rid}]: structure から馬番を読み取れない（印との整合チェックを実施できず）")
+            continue
+        for p in rows:
+            mark = (p.get("mark") or "").strip()
+            no = to_f(p.get("horse_no"))
+            if no is None:
+                continue
+            no = int(no)
+            if mark in KESHI_MARKS and no in bought:
+                err(f"predictions.csv [{rid} #{no} {p.get('horse_name')}]: mark='{mark}'（消し）"
+                    f"だが買い目に採用されている（消しは買い目不採用の馬に限る。"
+                    f"複勝圏に残すならR09に従い押さえ='△'または無印）")
+            if mark in BOUGHT_MARKS and no not in bought:
+                warn(f"predictions.csv [{rid} #{no} {p.get('horse_name')}]: mark='{mark}'"
+                     f"だが全券種の買い目に不在（印と買い目の対応を確認）")
 
     # ---- 宣言と実装の突合（races.notes の宣言タグ ↔ bets） ----
     # 宣言タグ書式（log/README.md が正本）:
