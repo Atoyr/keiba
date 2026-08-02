@@ -344,6 +344,16 @@ def main():
         if r.get("going") and re.search(r"(未確定|暫定)", notes) and not decided:
             warn(f"races.csv [{rid}]: going={r.get('going')} を確定値で記録しつつ notes に未確定/暫定の記述あり（どちらかに揃える）")
 
+        # (7) 一次ソース未確認のまま確定列に入った going の検出
+        #     関屋記念2026で going=重 と記録したがJRA公式の発表馬場は不良だった事故への対策。
+        #     notes に取得失敗系の語が残っているレースは、馬場を何で確定したかを
+        #     `馬場ソース=` タグで明示させる（タグがあれば確認済みとみなす）。
+        if r.get("going") and not tag(notes, "馬場ソース") \
+                and re.search(r"(取得失敗|ブロック|据え置き|未確認)", notes):
+            warn(f"races.csv [{rid}]: going={r.get('going')} が一次ソース未確認の疑い"
+                 "（notesに取得失敗/ブロック等の記述あり）。"
+                 "tools/jra_result.py で発表馬場を確認し notes に 馬場ソース= を付ける")
+
     # ---- rules_master ----
     rule_ids = set()
     for i, r in enumerate(rules, 2):

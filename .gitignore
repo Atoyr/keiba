@@ -1,2 +1,6 @@
 # polite_fetch.py の取得キャッシュ・レート制限状態（ローカル専用）
 cache/
+
+# jra_result.py が polite_fetch を import するため生成される
+__pycache__/
+*.pyc

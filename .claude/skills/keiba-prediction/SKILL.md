@@ -25,7 +25,8 @@ Claude.aiプロジェクト運用との違いはログの書き込み方だけ�
   リポジトリ外から最新mainを取りに行く場合のみ `KEIBA_LOCAL` を外す）。個別実行は
   `python3 log/validate.py` / `python3 log/analyze.py` / `python3 log/backtest.py`
 - 予想・振り返り・集計・ルール相談の開始時は、依頼がなくても最新mainを取得して validate と指示正本の同期チェックを先に実行する（指示「自動トリガー」節に従う）
-- オッズ・出馬表・結果の取得は `python3 tools/polite_fetch.py <URL>` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、JRA公式 / Yahoo競馬denma へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v2.md` に従う
+- **レース結果（着順・配当・ハロンタイム・コーナー通過順・発表馬場）は `python3 tools/jra_result.py --date <YYYY-MM-DD> --course <場> --race <R>` で取る**。JRA公式の一次ソースで、振り返りV0はこれで確定する。`going` を確定したら `races.notes` に `馬場ソース=` を残す（欠けると validate.py がWARN）。含水率・クッション値は結果ページに無いので取れなければ「取得失敗」
+- オッズ・出馬表など他の取得は `python3 tools/polite_fetch.py <URL> [--data "cname=..."]` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、Yahoo競馬denma / netkeiba へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v2.md` に従う
 - 指示・工程・構成に触れる編集をしたら、`README.md` と本 `SKILL.md` の該当箇所も同じ編集で更新する（三点同期）。CSVのタグ規約に触るなら `log/README.md` も同期する
 - 振り返りは references/振り返り手順.md のV0〜V7に従い、品質ゲート全✓で完了とする。**V6.5で `reflection/<日付>_<レース名>.md`（`## サマリー`＋13セクション）を必ず書き出す**（mdはCSVの派生成果物で正本ではない。サマリーの「核心」では原因を独立要素に分解し相互独立かを明記する）
 

@@ -153,10 +153,25 @@ python3 log/backtest.py [--detail]  # 個別実行（別戦略のリプレイ）
 ### 4. 情報収集（相手サイトに負荷をかけない）
 
 ```bash
-python3 tools/polite_fetch.py <URL> [--ttl 秒] [--out file]
+python3 tools/polite_fetch.py <URL> [--ttl 秒] [--out file] [--data "cname=..."]
 ```
 
-キャッシュ最優先（TTL内は実アクセスなし）・ホスト単位の最小間隔8秒＋1日60回上限・robots.txt遵守・429/503はRetry-After遵守。**403等の取得拒否は回避せず撤退**し、動作実績のある代替ソース（JRA公式 / Yahoo競馬denma）へ切り替える方針。ローカル/Claude Code専用（Claude.aiの実行環境は外部サイトへ出られないため、Claude.ai内の取得は従来どおりweb検索）。
+キャッシュ最優先（TTL内は実アクセスなし）・ホスト単位の最小間隔8秒＋1日60回上限・robots.txt遵守・429/503はRetry-After遵守。**403等の取得拒否は回避せず撤退**し、動作実績のある代替ソース（Yahoo競馬denma / netkeiba / 競馬ラボ）へ切り替える方針。`--data` はPOST遷移用（JRA公式の `/JRADB/*.html` はサイト本来の正規遷移がPOST。bot判定の回避ではない）。ローカル/Claude Code専用（Claude.aiの実行環境は外部サイトへ出られないため、Claude.ai内の取得は従来どおりweb検索）。
+
+#### レース結果（JRA公式・一次ソース）
+
+```bash
+python3 tools/jra_result.py --index                            # 取得可能な開催日を一覧
+python3 tools/jra_result.py --date 2026-08-02 --course 札幌 --race 11
+python3 tools/jra_result.py --date 2026-08-02 --course 札幌 --race 11 --json
+```
+
+着順（タイム・着差・通過順・上り3F・馬体重・人気）／**ハロンタイム**／コーナー通過順位／全券種の配当／天候・**発表馬場**をJRA公式から構造化して取得する。振り返り（V0事実確定）の一次ソースはこれを使う。
+
+- CNAME 末尾はサイト側のチェックサムでURLを自前生成できないため、必ず開催選択ページから辿る（推測でURLを組み立てない）
+- JRA公式の開催選択は**直近2か月程度しか収録しない**。範囲外の日付は収録範囲を示して「取得失敗」で終了する
+- **含水率・クッション値は結果ページに無い**（別の「馬場情報」ページ・開催中のみ公開）。本ツールは出力しないので、推測で埋めず取得失敗として扱う
+- 2026-08-02 検証：`www.jra.go.jp` の robots.txt は全面許可、正直なUAで 200。過去ログの「JRA公式はbot検出でブロック」は誤りで、原因は CNAME 遷移に到達できていなかったこと
 
 ## 運用の絶対原則（抜粋）
 

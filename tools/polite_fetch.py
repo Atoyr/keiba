@@ -9,11 +9,19 @@
   4. 連絡先入りの正直な User-Agent
   5. 429/503 は Retry-After を遵守して指数バックオフ（最大3回）
   6. 403/401 は「取得拒否」として即撤退。UA偽装・プロキシ等の回避策は取らない
-     → 代替の動作実績ソース（JRA公式 keiba.go.jp / Yahoo競馬 denma）へ切り替える
+     → 代替の動作実績ソース（Yahoo競馬 denma / netkeiba / 競馬ラボ）へ切り替える
+     ※ JRA公式は www.jra.go.jp。keiba.go.jp は地方競馬(NAR)で別物なので混同しない
 
 使い方:
   python3 tools/polite_fetch.py <URL> [--ttl 21600] [--out file] [--force]
+  python3 tools/polite_fetch.py <URL> --data "cname=pw01sli00/AF"   # POST
   python3 tools/polite_fetch.py --list urls.txt [--ttl 21600]
+
+POST について:
+  JRA公式の /JRADB/*.html は POST（cname=...）で遷移する画面がある。
+  これは bot 判定の回避ではなくサイト本来の正規の遷移手段であり、
+  robots.txt（jra.go.jp は全面許可）とレート制限は GET と同一に適用する。
+  キャッシュキーは URL とボディの組で作るため、POST もキャッシュが効く。
 
 TTL の目安:
   出馬表(denma)      21600 (6時間)
@@ -45,6 +53,14 @@ DAILY_HOST_LIMIT = 60       # 同一ホスト1日あたりの実リクエスト�
 MIN_TTL = 300               # これ未満のTTLは受け付けない（オッズ連打防止）
 MAX_RETRY = 3
 TIMEOUT = 30
+
+# Windows のコンソール既定は cp932 で、日本語の進捗表示や本文出力が化ける。
+# 出力は常に UTF-8 に固定する。
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
 
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root
 CACHE_DIR = os.path.join(BASE, "cache")
@@ -118,14 +134,17 @@ def _robots_ok(url):
 
 # ---------- キャッシュ ----------
 
-def _cache_paths(url):
-    key = hashlib.sha256(url.encode("utf-8")).hexdigest()[:24]
+def _cache_paths(url, data=None):
+    # GET のキーは従来どおり URL のみ（既存キャッシュを壊さない）。
+    # POST は URL とボディの組で一意にする。
+    seed = url if data is None else url + "\n" + data
+    key = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24]
     return (os.path.join(CACHE_DIR, key + ".meta.json"),
             os.path.join(CACHE_DIR, key + ".body"))
 
 
-def _read_cache(url, ttl, force):
-    meta_p, body_p = _cache_paths(url)
+def _read_cache(url, ttl, force, data=None):
+    meta_p, body_p = _cache_paths(url, data)
     if not (os.path.exists(meta_p) and os.path.exists(body_p)):
         return None, None
     try:
@@ -140,9 +159,9 @@ def _read_cache(url, ttl, force):
     return meta, None               # 期限切れ → 条件付きGETに使う
 
 
-def _write_cache(url, meta, body):
+def _write_cache(url, meta, body, data=None):
     os.makedirs(CACHE_DIR, exist_ok=True)
-    meta_p, body_p = _cache_paths(url)
+    meta_p, body_p = _cache_paths(url, data)
     with open(body_p, "wb") as f:
         f.write(body)
     with open(meta_p, "w", encoding="utf-8") as f:
@@ -151,10 +170,14 @@ def _write_cache(url, meta, body):
 
 # ---------- 取得本体 ----------
 
-def fetch(url, ttl, force=False):
-    """キャッシュ→robots→レート制限→条件付きGET の順で取得。bytes を返す。"""
+def fetch(url, ttl, force=False, data=None):
+    """キャッシュ→robots→レート制限→条件付きGET/POST の順で取得。bytes を返す。
+
+    data を渡すと POST（application/x-www-form-urlencoded）。
+    POST は条件付きリクエストを行わない（ETag/Last-Modified を送らない）。
+    """
     ttl = max(ttl, MIN_TTL)
-    meta, fresh = _read_cache(url, ttl, force)
+    meta, fresh = _read_cache(url, ttl, force, data)
     if fresh is not None:
         print(f"[cache] {url}（TTL内。実アクセスなし）", file=sys.stderr)
         return fresh
@@ -162,11 +185,15 @@ def fetch(url, ttl, force=False):
     if not _robots_ok(url):
         raise PermissionError(
             f"robots.txt が {url} の取得を許可していない。取得しない（回避もしない）。"
-            "JRA公式(keiba.go.jp)・Yahoo競馬(denma)など代替ソースを使うこと。")
+            "Yahoo競馬(denma)など代替ソースを使うこと。")
 
     host = urlparse(url).netloc
     headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "identity"}
-    if meta:  # 条件付きGET（変更なしなら 304 で転送量ほぼゼロ）
+    body_bytes = None
+    if data is not None:
+        body_bytes = data.encode("utf-8") if isinstance(data, str) else data
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    elif meta:  # 条件付きGET（変更なしなら 304 で転送量ほぼゼロ）
         if meta.get("etag"):
             headers["If-None-Match"] = meta["etag"]
         if meta.get("last_modified"):
@@ -176,7 +203,7 @@ def fetch(url, ttl, force=False):
     for attempt in range(1, MAX_RETRY + 1):
         if not _throttle(host):
             raise RuntimeError(f"{host}: 1日上限到達")
-        req = urllib.request.Request(url, headers=headers)
+        req = urllib.request.Request(url, data=body_bytes, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
                 body = r.read()
@@ -188,22 +215,23 @@ def fetch(url, ttl, force=False):
                     "last_modified": r.headers.get("Last-Modified"),
                     "content_type": r.headers.get("Content-Type", ""),
                 }
-                _write_cache(url, new_meta, body)
-                print(f"[GET {r.status}] {url} ({len(body)} bytes)", file=sys.stderr)
+                _write_cache(url, new_meta, body, data)
+                verb = "POST" if data is not None else "GET"
+                print(f"[{verb} {r.status}] {url} ({len(body)} bytes)", file=sys.stderr)
                 return body
         except urllib.error.HTTPError as e:
             if e.code == 304 and meta:
                 meta["fetched_at"] = time.time()
-                _, body_p = _cache_paths(url)
+                _, body_p = _cache_paths(url, data)
                 with open(body_p, "rb") as f:
                     body = f.read()
-                _write_cache(url, meta, body)
+                _write_cache(url, meta, body, data)
                 print(f"[304] {url} 変更なし。キャッシュ再利用", file=sys.stderr)
                 return body
             if e.code in (401, 403):
                 raise PermissionError(
                     f"HTTP {e.code}: {host} が取得を拒否。回避策は取らない。"
-                    "代替ソース（JRA公式 / Yahoo競馬 denma）へ切り替えること。")
+                    "代替ソース（Yahoo競馬 denma / netkeiba）へ切り替えること。")
             if e.code in (429, 503) and attempt < MAX_RETRY:
                 ra = e.headers.get("Retry-After")
                 try:
@@ -250,6 +278,8 @@ def main():
     ap.add_argument("--out", help="本文の保存先（省略時は標準出力にテキスト表示）")
     ap.add_argument("--force", action="store_true",
                     help="TTLを無視して再確認（条件付きGETは維持）")
+    ap.add_argument("--data",
+                    help="POSTボディ（例 'cname=pw01sli00/AF'）。指定時はPOST")
     args = ap.parse_args()
 
     urls = []
@@ -261,9 +291,12 @@ def main():
     else:
         ap.error("URL か --list を指定")
 
+    if args.data and args.list:
+        ap.error("--data は単一URLのときのみ指定できる")
+
     for i, url in enumerate(urls):
         try:
-            body = fetch(url, args.ttl, args.force)
+            body = fetch(url, args.ttl, args.force, data=args.data)
         except (PermissionError, RuntimeError, urllib.error.HTTPError) as e:
             print(f"[取得失敗] {url}: {e}", file=sys.stderr)
             continue
@@ -273,7 +306,7 @@ def main():
                 f.write(body)
             print(f"→ {out}")
         else:
-            meta_p, _ = _cache_paths(url)
+            meta_p, _ = _cache_paths(url, args.data)
             ct = ""
             try:
                 with open(meta_p, encoding="utf-8") as f:
