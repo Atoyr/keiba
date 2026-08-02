@@ -20,6 +20,8 @@ Claude.aiプロジェクト運用との違いはログの書き込み方だけ�
 
 - **ログはファイルへ直接追記する**：`log/races.csv` `log/predictions.csv` `log/bets.csv` `log/rule_fires.csv`。コードブロック出力→手動転記のフローは不要
 - 追記前に各CSVのカラム定義と**宣言タグ規約**を `log/README.md` で確認する（列順・記録原則・「予想は最終版のみ」「全頭記録」「数値列空欄はゲートFAIL」、races.notes の `band=／券種=／堅実穴=／予算=／計画総額=`、rule_fires.notes の `as_of=`）
+- **係数・加算層は分解して記録する**（記録原則10）：`coef_breakdown`＝`枠0.85;適性1.10`（積が composite_coef）、`additive_breakdown`＝`R+2.0;騎手+1.0`（和が additive_total・符号必須・加算層なしは `なし`）。合成後の1値だけではアブレーション不能になるため validate.py が積と和を照合する
+- **rule_fires は `capture`（予測方向の当否）と `outcome`（損益寄与）の2軸**（記録原則11）。capture は 的中／空振り／逆行／方向なし で、`rules_master.direction=手続き` の行は必ず `方向なし`。R19の降格判定は capture軸（逆行≧的中）で行う
 - ナレッジ更新（ルール追加・傾向追記・馬メモ）も該当ファイルへ直接編集してよいが、**編集内容は必ずチャットで要約提示**し、コミットはユーザーが行う
 - 集計は `KEIBA_LOCAL=1 bash tools/claude_run.sh`（作業コピーで validate＋analyze＋backtest一括。
   リポジトリ外から最新mainを取りに行く場合のみ `KEIBA_LOCAL` を外す）。個別実行は
@@ -29,6 +31,7 @@ Claude.aiプロジェクト運用との違いはログの書き込み方だけ�
 - オッズ・出馬表など他の取得は `python3 tools/polite_fetch.py <URL> [--data "cname=..."]` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、Yahoo競馬denma / netkeiba へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v2.md` に従う
 - 指示・工程・構成に触れる編集をしたら、`README.md` と本 `SKILL.md` の該当箇所も同じ編集で更新する（三点同期）。CSVのタグ規約に触るなら `log/README.md` も同期する
 - 振り返りは references/振り返り手順.md のV0〜V7に従い、品質ゲート全✓で完了とする。**V6.5で `reflection/<日付>_<レース名>.md`（`## サマリー`＋13セクション）を必ず書き出す**（mdはCSVの派生成果物で正本ではない。サマリーの「核心」では原因を独立要素に分解し相互独立かを明記する）
+- **`reflection/` は書き出し専用。工程の入力として読まない。** 予想・集計・ルール判定・原因分析の根拠は `log/` 配下CSVと一次ソースだけから取り、回顧mdを引用しない。開くのはユーザーが回顧そのものを求めたとき（照会・改訂・書き出し）に限る
 
 ## 絶対原則（環境を問わず）
 

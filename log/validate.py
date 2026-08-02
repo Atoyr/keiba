@@ -6,6 +6,9 @@
   スキーマ / 数値ゲート / 印の頭数(R15) / 積み上げ検算 / 点数×単価(R16)
   ＋ 宣言と実装の突合（帯域・配分タグ ↔ bets、計画総額 ↔ 実購入、as_of ↔ 確定馬場）
   ＋ 印と買い目の整合（消し馬の採用 / 印を付けた馬の不在 / 消し記号の表記ゆれ）
+  ＋ 係数・加算層の分解記録（coef_breakdown の積 ↔ composite_coef、
+     additive_breakdown の和 ↔ additive_total。A-1・2026-08-03導入）
+  ＋ rule_fires の capture 語彙と rules_master の direction 整合（A-2・同日導入）
   [ERROR] = ゲートFAIL級。予想・買い目を確定してはいけない状態
   [WARN]  = 記録不備。次の追記時に直す
 終了コード: ERRORが1件でもあれば 1、なければ 0
@@ -29,19 +32,26 @@ EXEMPT_RACES = {"2026_sakitama_hai", "2026_hakodate_kinen", "2026_radio_nikkei"}
 RACE_BUDGET_CAP = 3000
 BUDGET_GUARD_FROM = "2026-07-27"
 
+# 分解記録スキーマ（A-1）と capture 語彙（A-2）の適用開始日。
+# 制定日より前のレースは対象外＝遡及入力を強制しない（強制すると再構成＝捏造になる）
+SCHEMA_V2_FROM = "2026-08-03"
+
 EXPECTED_HEADERS = {
     "races.csv": ["race_id", "date", "race_name", "grade", "course", "field_size",
                   "going", "cushion", "pace_score_pre", "pace_flag_pre", "pace_actual",
                   "pace_match", "bias_actual", "result_1st", "result_2nd", "result_3rd",
                   "payout_sanrentan", "payout_sanrenpuku", "notes"],
     "predictions.csv": ["race_id", "horse_no", "horse_name", "mark", "base_score",
-                        "base_breakdown", "composite_coef", "additive_total", "r_adj",
+                        "base_breakdown", "composite_coef", "coef_breakdown",
+                        "additive_total", "additive_breakdown", "r_adj",
                         "final_score", "myomi_score", "popularity", "win_odds",
                         "place_odds_max", "r_value", "finish_pos", "in_place", "notes"],
     "bets.csv": ["race_id", "bet_type", "structure", "points", "unit", "cost",
                  "hit", "return", "notes"],
-    "rules_master.csv": ["rule_id", "rule_name", "origin_race", "added_date", "status"],
-    "rule_fires.csv": ["race_id", "rule_id", "fired", "followed", "outcome", "notes"],
+    "rules_master.csv": ["rule_id", "rule_name", "origin_race", "added_date", "status",
+                         "direction"],
+    "rule_fires.csv": ["race_id", "rule_id", "fired", "followed", "capture", "outcome",
+                       "notes"],
 }
 
 # 予想確定時に全頭必須の数値列（記録原則6）。r_adj / r_value はオッズ未確定なら暫定空欄可
@@ -74,6 +84,36 @@ def bet_horses(structure):
     return {int(x) for x in re.findall(r"\d+", s) if 1 <= int(x) <= 18}
 VALID_OUTCOMES = {"効いた", "逆効果", "中立", "違反して失敗", "違反したが結果OK", ""}
 VALID_STATUS = re.compile(r"^(現行|暫定.*|包含済.*|廃止.*)$")
+
+# --- A-2: rule_fires.capture（予測方向の当否）と rules_master.direction ---
+# outcome が損益寄与しか測れず「中立」に68%が滞留してR19の降格条件が発動しえなかった
+# 構造への対策（P1-3）。capture は損益と独立に、結果に照らした向きの当否を記録する。
+VALID_CAPTURE = {"的中", "空振り", "逆行", "方向なし", ""}
+VALID_DIRECTION = {"上向き", "下向き", "双方向", "手続き"}
+# 馬を指さないルール（検算・記録・工程順序・シナリオ制約）は capture の判定対象外
+NO_DIRECTION = "手続き"
+
+# --- A-1: 係数・加算層の分解記録 ---
+# coef_breakdown   例) 枠0.85;適性1.10;バイアス1.00   → 積が composite_coef
+# additive_breakdown 例) R+2.0;騎手+1.0;馬場-1.0      → 和が additive_total
+# 加算層が空なら "なし"（additive_total=0 のときのみ）
+COEF_ITEM = re.compile(r"^\s*(.*?)\s*([0-9]*\.?[0-9]+)\s*$")
+ADD_ITEM = re.compile(r"^\s*(.*?)\s*([+-][0-9]*\.?[0-9]+)\s*$")
+BREAKDOWN_SEP = re.compile(r"[;；]")
+
+
+def parse_breakdown(text, pattern):
+    """`名前値;名前値` を [(名前, 値)] に。1項でも解釈できなければ None を返す。"""
+    items = [s for s in BREAKDOWN_SEP.split(text or "") if s.strip()]
+    if not items:
+        return None
+    out = []
+    for it in items:
+        m = pattern.match(it)
+        if not m or not m.group(1):
+            return None
+        out.append((m.group(1), float(m.group(2))))
+    return out
 
 errors, warns = [], []
 
@@ -199,6 +239,56 @@ def main():
             # 合成係数キャップ 0.7-1.5
             if cf is not None and not (0.7 <= cf <= 1.5):
                 err(f"predictions.csv [{rid} #{p.get('horse_no')}]: composite_coef={cf} がクリップ範囲(0.7-1.5)外")
+
+            # --- A-1: 係数・加算層の分解記録 ---
+            # 「合成後の1値」しか残らないと、どの項が最終点を動かしたかを事後に復元できず、
+            # Phase 3 の係数アブレーション（1着馬の最終点順位が捉えられない課題B）が
+            # 実行不能になる。アイビスSD2026で⑥に適用した内枠ミスマッチ0.85が
+            # reflection md にしか残っていない事故が起点。
+            new_schema = (race_by_id[rid].get("date") or "") >= SCHEMA_V2_FROM
+            cb, ab = (p.get("coef_breakdown") or "").strip(), (p.get("additive_breakdown") or "").strip()
+            tagname = f"predictions.csv [{rid} #{p.get('horse_no')}]"
+            if cf is not None:
+                if not cb:
+                    if new_schema:
+                        warn(f"{tagname}: coef_breakdown 未記入"
+                             "（合成係数の内訳を 枠0.85;適性1.10 形式で。アブレーション不能になる）")
+                else:
+                    items = parse_breakdown(cb, COEF_ITEM)
+                    if items is None:
+                        err(f"{tagname}: coef_breakdown を解釈できない '{cb}'"
+                            "（書式は 名前値;名前値 例 枠0.85;適性1.10;バイアス1.00）")
+                    else:
+                        prod = 1.0
+                        for _, v in items:
+                            prod *= v
+                        # 合成係数はクリップ後の値を記録するため、クリップに当たった行は
+                        # 積と一致しない。その場合のみ notes の clip タグで容認する
+                        if abs(prod - cf) > 0.02 and "clip" not in (p.get("notes") or ""):
+                            err(f"{tagname}: coef_breakdown の積 {prod:.3f} ≠ composite_coef {cf}"
+                                "（内訳を直すか、クリップに当たったなら notes に clip タグ）")
+            if ad is not None:
+                if not ab:
+                    if new_schema:
+                        warn(f"{tagname}: additive_breakdown 未記入"
+                             "（加算層の内訳を R+2.0;騎手+1.0 形式で。加算層なしなら なし と書く）")
+                elif ab == "なし":
+                    if abs(ad) > 0.01:
+                        err(f"{tagname}: additive_breakdown='なし' だが additive_total={ad}")
+                else:
+                    items = parse_breakdown(ab, ADD_ITEM)
+                    if items is None:
+                        err(f"{tagname}: additive_breakdown を解釈できない '{ab}'"
+                            "（書式は 名前±値;名前±値 例 R+2.0;騎手+1.0;馬場-1.0。符号は必須）")
+                    else:
+                        s = sum(v for _, v in items)
+                        if abs(s - ad) > 0.1:
+                            err(f"{tagname}: additive_breakdown の和 {s:+.1f} ≠ additive_total {ad}")
+                        # r_adj は加算層の一項なので、内訳の R 項と一致していなければ整合しない
+                        r_adj = to_f(p.get("r_adj"))
+                        r_items = [v for k, v in items if k.startswith("R")]
+                        if r_adj is not None and r_items and abs(sum(r_items) - r_adj) > 0.1:
+                            warn(f"{tagname}: additive_breakdown の R項 {sum(r_items):+.1f} ≠ r_adj {r_adj}")
 
     # 印の頭数制約（R15）と全頭記録（記録原則5）
     for rid, rows in preds_by_race.items():
@@ -356,6 +446,7 @@ def main():
 
     # ---- rules_master ----
     rule_ids = set()
+    rule_dir = {}
     for i, r in enumerate(rules, 2):
         rid = (r.get("rule_id") or "").strip()
         if rid in rule_ids:
@@ -363,6 +454,11 @@ def main():
         rule_ids.add(rid)
         if not VALID_STATUS.match((r.get("status") or "").strip()):
             err(f"rules_master.csv [{rid}]: 不正な status '{r.get('status')}'")
+        d = (r.get("direction") or "").strip()
+        rule_dir[rid] = d
+        if d not in VALID_DIRECTION:
+            err(f"rules_master.csv [{rid}]: 不正な direction '{d}'"
+                f"（{'/'.join(sorted(VALID_DIRECTION))} のいずれか。capture 判定の入力・A-2）")
 
     # ---- rule_fires ----
     for i, f_ in enumerate(fires, 2):
@@ -376,6 +472,20 @@ def main():
                 err(f"rule_fires.csv 行{i}: {c} は 0/1/空のみ")
         if (f_.get("outcome") or "") not in VALID_OUTCOMES:
             warn(f"rule_fires.csv 行{i}: 未知の outcome '{f_.get('outcome')}'")
+        # --- A-2: capture（予測方向の当否）。outcome（損益寄与）と独立の第2軸 ---
+        cap = (f_.get("capture") or "").strip()
+        if cap not in VALID_CAPTURE:
+            err(f"rule_fires.csv 行{i}: 不正な capture '{cap}'"
+                f"（{'/'.join(x for x in sorted(VALID_CAPTURE) if x)} のいずれか）")
+        d = rule_dir.get(rl, "")
+        if d == NO_DIRECTION and cap and cap != "方向なし":
+            warn(f"rule_fires.csv [{rid} {rl}]: direction={NO_DIRECTION} のルールに capture='{cap}'"
+                 "（馬を指さないルールは capture=方向なし。判定は遵守率で行う）")
+        if d and d != NO_DIRECTION and f_.get("fired") == "1" and not cap \
+                and rid in race_by_id and race_by_id[rid].get("result_1st") \
+                and (race_by_id[rid].get("date") or "") >= SCHEMA_V2_FROM:
+            warn(f"rule_fires.csv [{rid} {rl}]: 結果確定済み・direction={d} なのに capture 未記入"
+                 "（R19の降格/昇格判定の入力・振り返りV4で埋める）")
         # 鮮度: 参照した馬場宣言(as_of=)が確定馬場と食い違ったまま残っていないか
         if rid in race_by_id:
             as_of = tag(f_.get("notes") or "", "as_of")
