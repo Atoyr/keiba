@@ -16,6 +16,10 @@ import re
 import sys
 from collections import defaultdict
 
+# Windows既定コンソール(cp932)では罫線・✕等でUnicodeEncodeErrorを起こし途中で落ちるため強制UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 # README記載のバックフィル3レース（数値欠損を例外として容認・集計参考外）
@@ -366,7 +370,11 @@ def main():
         if rid in race_by_id:
             as_of = tag(f_.get("notes") or "", "as_of")
             going = (race_by_id[rid].get("going") or "").strip()
-            if as_of and going and as_of != going:
+            # as_of は「重(暫定)」「良(確定)」のように但し書きを伴うことがある。
+            # 比較対象は馬場そのものなので、先頭の馬場語だけを取り出して突合する
+            m_going = re.match(r"\s*(不良|稍重|重|良)", as_of or "")
+            as_of_going = m_going.group(1) if m_going else as_of
+            if as_of and going and as_of_going != going:
                 warn(f"rule_fires.csv [{rid} {rl}]: as_of={as_of} が確定馬場 {going} と不一致（旧前提のnotesが残存）")
         # ゲートの本丸: followed=0 のまま買おうとしていないか。
         # 結果確定済みレースの違反は「記録された過去」であり outcome 列で追跡済み → スキップ

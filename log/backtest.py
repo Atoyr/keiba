@@ -24,8 +24,13 @@ analyze.py が「実際に買った結果」の集計であるのに対し、本
 import argparse
 import csv
 import os
+import sys
 from collections import defaultdict
 from itertools import combinations, permutations
+
+# Windows既定コンソール(cp932)では罫線・✕等でUnicodeEncodeErrorを起こし途中で落ちるため強制UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 MARK_ORDER = ["◎", "○", "▲", "△", "☆"]
