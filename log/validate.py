@@ -45,11 +45,12 @@ EXPECTED_HEADERS = {
                         "base_breakdown", "composite_coef", "coef_breakdown",
                         "additive_total", "additive_breakdown", "r_adj",
                         "final_score", "myomi_score", "popularity", "win_odds",
-                        "place_odds_max", "r_value", "finish_pos", "in_place", "notes"],
+                        "place_odds_max", "r_value", "finish_pos", "in_place",
+                        "last_3f", "corner4_pos", "notes"],
     "bets.csv": ["race_id", "bet_type", "structure", "points", "unit", "cost",
                  "hit", "return", "notes"],
     "rules_master.csv": ["rule_id", "rule_name", "origin_race", "added_date", "status",
-                         "direction"],
+                         "direction", "scope"],
     "rule_fires.csv": ["race_id", "rule_id", "fired", "followed", "capture", "outcome",
                        "notes"],
 }
@@ -90,6 +91,12 @@ VALID_STATUS = re.compile(r"^(現行|暫定.*|包含済.*|廃止.*)$")
 # 構造への対策（P1-3）。capture は損益と独立に、結果に照らした向きの当否を記録する。
 VALID_CAPTURE = {"的中", "空振り", "逆行", "方向なし", ""}
 VALID_DIRECTION = {"上向き", "下向き", "双方向", "手続き"}
+
+# --- T9: scope（そのルールをチェックする工程）。ゲート②の対象行判定を機械化する ---
+# 指示v2 工程11は「買い目・配分・頭固定に作用する行＋status=暫定の全行」をゲート②の
+# 対象と定義しているが、どの行が該当するかは毎回人が判断していた。scope で固定する。
+VALID_SCOPE = {"印確定前", "買い目", "両方", "振り返り", "照会"}
+GATE2_SCOPES = {"買い目", "両方"}  # ＋ status=暫定 の全行（指示v2の定義）
 # 馬を指さないルール（検算・記録・工程順序・シナリオ制約）は capture の判定対象外
 NO_DIRECTION = "手続き"
 
@@ -215,6 +222,24 @@ def main():
             expect = "1" if fin <= 3 else "0"
             if inp != expect:
                 err(f"predictions.csv [{rid} #{p.get('horse_no')}]: finish_pos={int(fin)} と in_place={inp} が矛盾")
+
+        # --- T1: 結果側の観測列（last_3f / corner4_pos）---
+        # jra_result.py が全頭ぶん取得済みの値。「着順と上がりの乖離＝展開不利の好走」
+        # （評価ルール第169項の次走加点材料）を機械抽出するための入力で、
+        # これが無いと不利の反映が主観メモ頼みの一本経路になる。
+        # 競走中止・除外は空欄で可（finish_pos も空欄になるため条件から外れる）
+        if fin is not None and rid in race_by_id \
+                and (race_by_id[rid].get("date") or "") >= SCHEMA_V2_FROM:
+            for c, label in (("last_3f", "上がり3F"), ("corner4_pos", "4角通過順位")):
+                if not (p.get(c) or "").strip():
+                    warn(f"predictions.csv [{rid} #{p.get('horse_no')}]: 着順記入済みだが {c}（{label}）が空"
+                         "（tools/jra_result.py の出力から転記する）")
+        l3 = to_f(p.get("last_3f"))
+        if l3 is not None and not (30.0 <= l3 <= 50.0):
+            err(f"predictions.csv [{rid} #{p.get('horse_no')}]: last_3f={l3} が想定範囲(30.0-50.0秒)外")
+        c4 = to_f(p.get("corner4_pos"))
+        if c4 is not None and not (1 <= c4 <= 18):
+            err(f"predictions.csv [{rid} #{p.get('horse_no')}]: corner4_pos={c4} が想定範囲(1-18)外")
         # 数値列ゲート（バックフィル3レースは例外）
         if rid not in EXEMPT_RACES:
             for c in NUM_COLS_REQUIRED:
@@ -447,6 +472,8 @@ def main():
     # ---- rules_master ----
     rule_ids = set()
     rule_dir = {}
+    rule_scope = {}
+    gate2_rules = set()
     for i, r in enumerate(rules, 2):
         rid = (r.get("rule_id") or "").strip()
         if rid in rule_ids:
@@ -459,6 +486,15 @@ def main():
         if d not in VALID_DIRECTION:
             err(f"rules_master.csv [{rid}]: 不正な direction '{d}'"
                 f"（{'/'.join(sorted(VALID_DIRECTION))} のいずれか。capture 判定の入力・A-2）")
+        sc = (r.get("scope") or "").strip()
+        if sc not in VALID_SCOPE:
+            err(f"rules_master.csv [{rid}]: 不正な scope '{sc}'"
+                f"（{'/'.join(sorted(VALID_SCOPE))} のいずれか。ゲート②の対象行判定・T9）")
+        st = (r.get("status") or "").strip()
+        if st.startswith(("現行", "暫定")):
+            rule_scope[rid] = sc
+            if sc in GATE2_SCOPES or st.startswith("暫定"):
+                gate2_rules.add(rid)
 
     # ---- rule_fires ----
     for i, f_ in enumerate(fires, 2):
@@ -503,6 +539,26 @@ def main():
                 and rid in race_by_id
                 and not race_by_id[rid].get("result_1st")):
             err(f"rule_fires.csv [{rid} {rl}]: followed=0 のまま bets が存在（未決レース・ゲート突破）")
+
+    # ---- ゲート②の網羅チェック（T9・scope列の実効化） ----
+    # 指示v2 工程11：買い目確定直前に「買い目・配分・頭固定に作用する行＋status=暫定の全行」を
+    # 再チェックする。どの行が該当するかを scope 列で固定し、rule_fires に記録が無い行を検出する。
+    # 買い目のあるレース（＝実際に確定まで進んだレース）だけを対象にする。
+    fired_by_race = defaultdict(set)
+    for f_ in fires:
+        fired_by_race[(f_.get("race_id") or "").strip()].add((f_.get("rule_id") or "").strip())
+    for rid in sorted(bets_by_race):
+        if rid in EXEMPT_RACES or rid not in race_by_id:
+            continue
+        # ルールは追加日以降にしか適用できない。レース日より後に生まれた行は対象外
+        race_date = (race_by_id[rid].get("date") or "")
+        target = {r["rule_id"].strip() for r in rules
+                  if r["rule_id"].strip() in gate2_rules
+                  and (r.get("added_date") or "9999") <= race_date}
+        missing = sorted(target - fired_by_race.get(rid, set()))
+        if missing:
+            warn(f"rule_fires.csv [{rid}]: ゲート②の対象ルールに記録が無い {missing}"
+                 "（scope=買い目/両方 と status=暫定 の行は買い目確定直前に再評価して記録する・指示v2工程11）")
 
     # ---- report ----
     print("=" * 60)

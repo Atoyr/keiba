@@ -133,6 +133,58 @@ def main():
 
     print()
     print("=" * 60)
+    print("■ 展開不利の好走・4角位置×上がり（T1・検証待ち仮説15）")
+    print("=" * 60)
+    # 『競馬予想_評価ルール.md』第169項「着順と上がりの乖離＝負けたが上がり最速は
+    # 展開不利の好走、次走加点材料」を機械抽出する。従来この判断は主観メモ経由の
+    # 一本経路しかなく、次走のベース点に体系的に反映されていなかった。
+    # pos_gain（4角位置−着順）は observation ではなく導出値なのでCSVに持たず、ここで計算する。
+    rows_t1 = [p for p in preds if to_f(p.get("finish_pos")) is not None
+               and to_f(p.get("last_3f")) is not None]
+    if not rows_t1:
+        print("last_3f 未記入（2026-08-03導入・以後のレースから記録）。")
+        print("→ 記入が進むと『上がり上位なのに着外＝次走加点候補』と仮説15のクロス集計がここに出る")
+    else:
+        print("(1) 展開不利の好走候補（レース内の上がり3F順位≦3 かつ 着順≧4）")
+        by_r = defaultdict(list)
+        for p in rows_t1:
+            by_r[p["race_id"]].append(p)
+        cand = 0
+        for rid, rs in by_r.items():
+            ordered = sorted(rs, key=lambda p: to_f(p["last_3f"]))
+            for i, p in enumerate(ordered, 1):
+                fin = int(to_f(p["finish_pos"]))
+                if i <= 3 and fin >= 4:
+                    c4 = to_f(p.get("corner4_pos"))
+                    gain = f" 4角{int(c4)}番手→{fin}着(pos_gain{int(c4) - fin:+d})" if c4 else ""
+                    print(f"  {race_name.get(rid, rid)} #{p.get('horse_no')} {p.get('horse_name')}"
+                          f": 上がり{p['last_3f']}秒(レース{i}位) {fin}着{gain}")
+                    cand += 1
+        if not cand:
+            print("  該当なし")
+
+        print("(2) 4角6番手以内 × 上がり3位以内 の積（仮説15の判定入力）")
+        cells = {(True, True): [0, 0], (True, False): [0, 0],
+                 (False, True): [0, 0], (False, False): [0, 0]}
+        for rid, rs in by_r.items():
+            ordered = sorted(rs, key=lambda p: to_f(p["last_3f"]))
+            rank = {id(p): i for i, p in enumerate(ordered, 1)}
+            for p in rs:
+                c4 = to_f(p.get("corner4_pos"))
+                if c4 is None:
+                    continue
+                k = (c4 <= 6, rank[id(p)] <= 3)
+                cells[k][0] += 1
+                if p.get("in_place") == "1":
+                    cells[k][1] += 1
+        for (pos_ok, agari_ok), (n_, hit) in cells.items():
+            if n_:
+                lab = f"4角{'6番手以内' if pos_ok else '7番手以降'}×上がり{'3位以内' if agari_ok else '4位以下'}"
+                print(f"  {lab}: 複勝 {hit}/{n_} ({hit / n_ * 100:.0f}%)")
+        print("  ※仮説15は距離帯（短距離/マイル以上）で分けて判定する。本集計は全距離まとめ")
+
+    print()
+    print("=" * 60)
     print("■ R値帯別 複勝率")
     print("=" * 60)
     bands = [("R>=4.0", lambda r: r >= 4.0), ("3.0-4.0", lambda r: 3.0 <= r < 4.0),
@@ -306,7 +358,15 @@ def main():
             judge = " ★発火5件到達だが capture 未記入で判定不能"
         else:
             neg, pos = cap.get("逆行", 0), cap.get("的中", 0)
-            judge = " ★判定可能" + ("（降格候補: 逆行≧的中）" if neg >= pos and neg > 0 else "")
+            miss = cap.get("空振り", 0)
+            judged = sum(cap.values())
+            # 空振り優勢ガード（2026-08-03・R19に追加）。空振りは機能の証拠にも
+            # 逆機能の証拠にもならないため、件数だけで昇格させると未検証のルールが現行化する。
+            # 起点：R20（発火6件・空振り5=83%）が条文上は昇格条件を満たしてしまった件
+            if judged and miss / judged > 0.8:
+                judge = f" （判定保留: 空振り{miss}/{judged}＝{miss / judged * 100:.0f}%で8割超）"
+            else:
+                judge = " ★判定可能" + ("（降格候補: 逆行≧的中）" if neg >= pos and neg > 0 else "")
         prov_lines.append(f"  {rid_}({direction})発火 {cnt}件 [{ocs}]{caps}{judge}")
 
     # R13はG1のみの別トラック
