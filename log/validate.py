@@ -36,6 +36,14 @@ BUDGET_GUARD_FROM = "2026-07-27"
 # 制定日より前のレースは対象外＝遡及入力を強制しない（強制すると再構成＝捏造になる）
 SCHEMA_V2_FROM = "2026-08-03"
 
+# 適性タグ（A-3）の適用開始日。`5走距離帯=` は 2026-08-09 に記録原則として導入されたが
+# 「運用で担保する」としていた結果、以降3レース（CBC賞・中京記念・札幌記念）すべてで
+# 記入されず 187行中0件だった。log/README.md「チェックの置き場所の原則」に従い
+# 機械判定できるものを validate.py へ移す（札幌記念2026の #設計 で決定）。
+# 遡及は強制しない＝制定日より前のレースは対象外
+SCHEMA_V3_FROM = "2026-08-17"
+APTITUDE_TAGS = ("5走距離帯=", "父=", "母父=")
+
 EXPECTED_HEADERS = {
     "races.csv": ["race_id", "date", "race_name", "grade", "course", "field_size",
                   "going", "cushion", "pace_score_pre", "pace_flag_pre", "pace_actual",
@@ -314,6 +322,19 @@ def main():
                         r_items = [v for k, v in items if k.startswith("R")]
                         if r_adj is not None and r_items and abs(sum(r_items) - r_adj) > 0.1:
                             warn(f"{tagname}: additive_breakdown の R項 {sum(r_items):+.1f} ≠ r_adj {r_adj}")
+
+            # --- A-3: 適性タグ（5走距離帯・父・母父）---
+            # 未経験の距離帯・コースをどう扱うかは血統でしか埋められないが、その判定入力が
+            # predictions.csv に存在しないため、母父ルールを作っても検証不能になる
+            # （仮説17の教訓＝入力が実在するかを先に確認する）。R38 の発火判定と
+            # 仮説20-d・仮説22 の集計入力を兼ねる。値は増やさず base_breakdown に併記する
+            if (race_by_id[rid].get("date") or "") >= SCHEMA_V3_FROM:
+                bb = (p.get("base_breakdown") or "")
+                miss = [x for x in APTITUDE_TAGS if x not in bb]
+                if miss:
+                    warn(f"{tagname}: base_breakdown に適性タグ {miss} がない"
+                         "（書式は log/README.md の base_breakdown 節。"
+                         "5走距離帯= は R38 の未経験判定と仮説20-d、父=/母父= は仮説22 の集計入力）")
 
     # 印の頭数制約（R15）と全頭記録（記録原則5）
     for rid, rows in preds_by_race.items():
