@@ -44,6 +44,50 @@ SCHEMA_V2_FROM = "2026-08-03"
 SCHEMA_V3_FROM = "2026-08-17"
 APTITUDE_TAGS = ("5走距離帯=", "父=", "母父=")
 
+# `5走距離帯=` の要素書式（2026-08-17拡張・中京記念2026の #設計）。
+#   距離:馬場:着順:格   例) 1600:稍重:6着:G3
+# 拡張の理由：準備工程（`脚質認定ルール.md` §1）は近5走の「距離・コース・馬場」を
+# 取得する規定だが、同 §6 の出力書式が 4角相対位置しか書き出さないため、
+# 距離と馬場が変換の途中で捨てられ予想工程に届いていなかった。
+# 中京記念2026の2着⑤ミニトランザット（良[4-0-2-2]/稍重[0-0-0-3]・前走は稍重での6着）を
+# 良馬場のレースで base62＝16頭中9位に置いた失点がこれで説明できる。
+# 格を併記するのは R25（base70未満＋1年内に重賞4着以内 → 5走精査を必須）の
+# **発火対象を機械抽出できるようにするため**。R25 は現行ルールで条文は変更しない
+# （「チェックの置き場所の原則」に沿った既存ルールの機械化）。
+# 拡張時点で本タグの使用実績は 0行・SCHEMA_V3_FROM 以降のレースも 0件のため移行は発生しない。
+RUN5_FIELDS = 4
+R25_GRADES = ("G1", "G2", "G3")
+R25_AUDITED_TAG = "R25精査="  # 発火対象に対する精査記録のマーカー
+
+
+def parse_run5(bb):
+    """`5走距離帯=` の値を [(距離, 馬場, 着順, 格)] に。要素数が違うものは None を混ぜて返す。"""
+    if "5走距離帯=" not in bb:
+        return None
+    seg = bb.split("5走距離帯=", 1)[1]
+    for stop in (" / ", "／", " ｜ "):
+        if stop in seg:
+            seg = seg.split(stop, 1)[0]
+    out = []
+    for it in [x.strip() for x in seg.split(";") if x.strip()]:
+        f = [y.strip() for y in it.split(":")]
+        out.append(tuple(f) if len(f) == RUN5_FIELDS else None)
+    return out
+
+
+def r25_triggers(items):
+    """近5走に『重賞かつ4着以内』があるか（R25発火条件の機械近似）。"""
+    for it in items or []:
+        if not it:
+            continue
+        _, _, chaku, grade = it
+        if grade not in R25_GRADES:
+            continue
+        d = "".join(c for c in chaku if c.isdigit())
+        if d and int(d) <= 4:
+            return True
+    return False
+
 EXPECTED_HEADERS = {
     "races.csv": ["race_id", "date", "race_name", "grade", "course", "field_size",
                   "going", "cushion", "pace_score_pre", "pace_flag_pre", "pace_actual",
@@ -335,6 +379,22 @@ def main():
                     warn(f"{tagname}: base_breakdown に適性タグ {miss} がない"
                          "（書式は log/README.md の base_breakdown 節。"
                          "5走距離帯= は R38 の未経験判定と仮説20-d、父=/母父= は仮説22 の集計入力）")
+                # --- A-3b: 5走距離帯の要素書式（距離:馬場:着順:格）---
+                items = parse_run5(bb)
+                if items is not None:
+                    bad = [i + 1 for i, it in enumerate(items) if it is None]
+                    if bad:
+                        warn(f"{tagname}: 5走距離帯= の{bad}走目が "
+                             f"`距離:馬場:着順:格` の{RUN5_FIELDS}項でない"
+                             "（例 1600:稍重:6着:G3。取れない項は 不明 と書く・推測で埋めない）")
+                    # --- A-4: R25 発火対象の機械抽出（既存の現行ルールの機械化）---
+                    bs = to_f(p.get("base_score"))
+                    if bs is not None and bs < 70 and r25_triggers(items):
+                        blob = bb + " " + (p.get("notes") or "")
+                        if R25_AUDITED_TAG not in blob:
+                            warn(f"{tagname}: R25発火対象（base {bs:g} < 70 かつ近5走に重賞4着以内）"
+                                 f"だが精査記録がない（`{R25_AUDITED_TAG}` に5走精査の結論と"
+                                 "根拠2走以上を書く。中京記念2026の2着⑤を取り逃した経路）")
 
     # 印の頭数制約（R15）と全頭記録（記録原則5）
     for rid, rows in preds_by_race.items():
