@@ -3,6 +3,7 @@
 """予測ログ集計スクリプト。log/ ディレクトリで python3 analyze.py を実行。標準ライブラリのみ使用。"""
 import csv
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -311,6 +312,29 @@ def main():
               f"遵守 {followed}/{len(fired)} [{oc}]{cp}")
     print("※ capture は結果に照らした予測方向の当否（的中/空振り/逆行）。損益寄与の outcome とは独立の第2軸。")
     print("  direction=手続き のルールは capture では判定せず、遵守率と validate.py の機械化可否で扱う（R19）。")
+
+    # --- 保全ルールのコスト軸（2026-08-17新設） ---
+    # 「紐に残せ・点を足せ」型の保全ルールは外れても capture=空振り（無害）にしか
+    # 見えず、R19の降格条件（逆行≧的中）が構造的に発動しない。実コストは追加購入
+    # 点数のROI希釈なので、bets.notes の 保全=R## タグ（ルールが強制した追加買い目を
+    # 別行で記録）から投資/回収を直接測る。恒常的に回収<100%の保全ルールが削減候補。
+    hozen = defaultdict(lambda: [0.0, 0.0, 0])
+    for b in load("bets.csv"):
+        m = re.search(r"保全=(R\d+)", b.get("notes") or "")
+        if m:
+            hozen[m.group(1)][0] += to_f(b.get("cost")) or 0
+            hozen[m.group(1)][1] += to_f(b.get("return")) or 0
+            hozen[m.group(1)][2] += 1
+    print()
+    print("■ 保全ルールのコスト（bets.notes 保全=R## タグ集計）")
+    if hozen:
+        for rid in sorted(hozen):
+            c, ret, n = hozen[rid]
+            roi = f"{ret / c * 100:.0f}%" if c else "-"
+            print(f"{rid}: 保全買い目 {n}行 投資{c:g}円 回収{ret:g}円 ROI {roi}")
+        print("※ 恒常的にROI<100%の保全ルールは較正レビューの削減候補（判定はn=10レビューのみ・R19）")
+    else:
+        print("タグ付き行なし（2026-08-17以降、保全ルールが強制した追加買い目は別行＋保全=R##で記録する）")
 
     print()
     print("=" * 60)

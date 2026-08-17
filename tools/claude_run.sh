@@ -35,6 +35,13 @@ else
 fi
 
 echo
+echo "================ gate.py ==================="
+if [ -f "$WORK/log/gate.py" ]; then
+  python3 "$WORK/log/gate.py" || VALIDATE_FAIL=1
+else
+  echo "[skip] log/gate.py が main に未コミット。"
+fi
+echo
 echo "================ analyze.py ================"
 python3 "$WORK/log/analyze.py"
 

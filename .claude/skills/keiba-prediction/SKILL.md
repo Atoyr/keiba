@@ -19,15 +19,17 @@ description: JRA重賞レースの予想・振り返り・ログ記録をこの�
 Claude.aiプロジェクト運用との違いはログの書き込み方だけ。手順自体は変えない。
 
 - **ログはファイルへ直接追記する**：`log/races.csv` `log/predictions.csv` `log/bets.csv` `log/rule_fires.csv`。コードブロック出力→手動転記のフローは不要
+- **ログ追記後・応答確定前に `python3 log/validate.py` を実行し、追記したレースに関する ERROR が 0 であることを確認してから確定を宣言する**（`#予想` `#更新` `#振り返り` 共通）。ERRORが出たらその場で修正する。セッション冒頭の validate は前回分の事後検出でしかなく、中京記念2026では myomi_score 全16頭未記入が次セッションまで発見されなかった
+- **買い目確定前（ゲート②）は `python3 log/gate.py` も実行する**。買い目系ルールの機械判定可能条文（R23/R24/R31/R32/R35/R36/R37）はスクリプトが判定し、LLMは裁量ルールの判定とFAIL時の理由記録（`欠落理由=` `軸選定=`）に専念する。GATE-FAILが残る買い目は確定しない
 - 追記前に各CSVのカラム定義と**宣言タグ規約**を `log/README.md` で確認する（列順・記録原則・「予想は最終版のみ」「全頭記録」「数値列空欄はゲートFAIL」、races.notes の `band=／券種=／堅実穴=／予算=／計画総額=`、rule_fires.notes の `as_of=`）
 - **係数・加算層は分解して記録する**（記録原則10）：`coef_breakdown`＝`枠0.85;適性1.10`（積が composite_coef）、`additive_breakdown`＝`R+2.0;騎手+1.0`（和が additive_total・符号必須・加算層なしは `なし`）。合成後の1値だけではアブレーション不能になるため validate.py が積と和を照合する
 - **適性タグを `base_breakdown` に併記する**（記録原則12・2026-08-17〜）：`5走距離帯=1600:稍重:6着:G3;1600:良:1着:3勝;…`（**書式 `距離:馬場:着順:格`**・2026-08-17拡張） ／ `父=<種牡馬名>` ／ `母父=<種牡馬名>` を ` / ` 区切りで。列は増やさない。未経験の距離帯・コースの適性は血統でしか埋められないが、その判定入力がpredictions.csv に存在しなかったため（母父187行中1行・5走距離帯0行）機械化した。**未経験は「不利」でなく「未知」＝±0も正当**で、R38は加点でなく記録を強制する。取得できなければ `父=取得失敗`（推測で埋めない）。validate.py が欠落をWARNで検出する
 - **振り返りでは `last_3f` / `corner4_pos` を全頭転記する**（`jra_result.py` の出力にある）。「上がり上位なのに着外＝展開不利の好走」を機械抽出するための入力で、`analyze.py` が次走加点候補として出力する
 - **rule_fires は `capture`（予測方向の当否）と `outcome`（損益寄与）の2軸**（記録原則11）。capture は 的中／空振り／逆行／方向なし で、`rules_master.direction=手続き` の行は必ず `方向なし`。R19の降格判定は capture軸（逆行≧的中）で行う
 - ナレッジ更新（ルール追加・傾向追記・馬メモ）も該当ファイルへ直接編集してよいが、**編集内容は必ずチャットで要約提示**し、コミットはユーザーが行う
-- 集計は `KEIBA_LOCAL=1 bash tools/claude_run.sh`（作業コピーで validate＋analyze＋backtest一括。
+- 集計は `KEIBA_LOCAL=1 bash tools/claude_run.sh`（作業コピーで validate＋gate＋analyze＋backtest一括。
   リポジトリ外から最新mainを取りに行く場合のみ `KEIBA_LOCAL` を外す）。個別実行は
-  `python3 log/validate.py` / `python3 log/analyze.py` / `python3 log/backtest.py` / `python3 log/calibrate.py`
+  `python3 log/validate.py` / `python3 log/gate.py` / `python3 log/analyze.py` / `python3 log/backtest.py` / `python3 log/calibrate.py`
 - 予想・振り返り・集計・ルール相談の開始時は、依頼がなくても最新mainを取得して validate と指示正本の同期チェックを先に実行する（指示「自動トリガー」節に従う）
 - **レース結果（着順・配当・ハロンタイム・コーナー通過順・発表馬場）は `python3 tools/jra_result.py --date <YYYY-MM-DD> --course <場> --race <R>` で取る**。JRA公式の一次ソースで、振り返りV0はこれで確定する。`going` を確定したら `races.notes` に `馬場ソース=` を残す（欠けると validate.py がWARN）。含水率・クッション値は結果ページに無いので取れなければ「取得失敗」
 - オッズ・出馬表など他の取得は `python3 tools/polite_fetch.py <URL> [--data "cname=..."]` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、Yahoo競馬denma / netkeiba へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v2.md` に従う
