@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # claude_run.sh — 集計・バックテストのランナー（Claude.ai コンテナ／ローカル共通）
 #
-# GitHub の最新 main を取得して log/validate.py → log/analyze.py → log/backtest.py
-# → log/calibrate.py を実行する。
+# GitHub の最新 main を取得して log/validate.py → log/r26_gate.py → log/gate.py
+# → log/analyze.py → log/backtest.py → log/calibrate.py を実行する。
 # Claude.ai のコード実行コンテナは GitHub への通信が許可されているため、
 # プロジェクトナレッジの Sync 状態と無関係に常に最新コミットで集計できる。
 #
 # 使い方:
-#   bash tools/claude_run.sh              # validate + analyze + backtest + calibrate
+#   bash tools/claude_run.sh              # validate + R26 gate + gate + analyze + backtest + calibrate
 #   bash tools/claude_run.sh --detail     # backtest にレース別内訳を渡す
 #   KEIBA_LOCAL=1 bash tools/claude_run.sh  # 取得せず手元の作業コピーで実行
 set -euo pipefail
@@ -32,6 +32,14 @@ if [ -f "$WORK/log/validate.py" ]; then
   python3 "$WORK/log/validate.py" || VALIDATE_FAIL=1
 else
   echo "[skip] log/validate.py が main に未コミット。"
+fi
+
+echo
+echo "================ r26_gate.py ==============="
+if [ -f "$WORK/log/r26_gate.py" ]; then
+  python3 "$WORK/log/r26_gate.py" || VALIDATE_FAIL=1
+else
+  echo "[skip] log/r26_gate.py が main に未コミット。"
 fi
 
 echo
@@ -63,7 +71,7 @@ fi
 
 if [ "$VALIDATE_FAIL" = "1" ]; then
   echo
-  echo "!!! validate.py がERRORを検出（R22）。上記集計は不整合データを含む参考値。"
+  echo "!!! 機械ゲートがERRORを検出（validate.py / r26_gate.py / gate.py）。上記集計は不整合データを含む参考値。"
   echo "!!! 修正するまで新規の印・買い目を確定しないこと。"
   exit 1
 fi
