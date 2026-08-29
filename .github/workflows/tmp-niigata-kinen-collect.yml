@@ -1,12 +1,12 @@
 name: tmp-niigata-kinen-collect
 on:
   push:
-    branches: [collect/2026-niigata-kinen]
+    branches:
+      - collect/2026-niigata-kinen
 permissions:
   contents: write
 jobs:
   update:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,8 +21,7 @@ jobs:
           course = Path('references/コース別_脚質枠_補正表_夏開催追記.md')
           text = course.read_text(encoding='utf-8')
           marker = '## 夏開催の共通レジーム'
-          block = r'''
----
+          block = '''---
 
 ## ⑲ 新潟 芝2000m（外）
 
@@ -50,13 +49,11 @@ jobs:
 
 '''
           if '## ⑲ 新潟 芝2000m（外）' not in text:
-              text = text.replace(marker, block + marker)
-              course.write_text(text, encoding='utf-8')
+              course.write_text(text.replace(marker, block + marker), encoding='utf-8')
 
           race = Path('references/レース別_過去傾向データ.md')
           rtext = race.read_text(encoding='utf-8')
-          rblock = r'''
-
+          rblock = '''
 ---
 
 ## ⑳ 新潟記念（新潟芝2000m外・2016〜2025）
@@ -86,12 +83,12 @@ JRA公式2026年版の過去10年では、1人気【1-3-1-5】複勝50.0%、2人
 - **加算層どまり：** 4人気不振、5人気不振、近年1〜2枠不振、逃げ不振、乗り替わり。いずれも最大-1相当。
 
 ### 穴トリガーと妙味
-6人気以下の3着内が14/30で、4〜5人気より6〜10人気帯に実績が集中。脚質全体では追込・上がり上位が優勢なため、穴側は**末脚トリガー×1.4／R・6〜10人気×1.2／前向き脚質×0.7**を初期値とする。枠は10年全体と近6年で方向が揺れるため×1.0。バックテストの基準は「過去10年で6人気以下14頭を3着内に含み、追込が13頭・上がり1〜3位の複勝率が高い」こと。単一年度で係数を書き換えない。
+6人気以下の3着内が14/30で、4〜5人気より6〜10人気帯に実績が集中。脚質全体では追込・上がり上位が優勢なため、穴側は**末脚トリガー×1.4／R・6〜10人気×1.2／前向き脚質×0.7**を初期値とする。枠は10年全体と近6年で方向が揺れるため×1.0。単一年度で係数を書き換えない。
 
 **一次ソース：** JRA「新潟記念 データ分析（2026）」「新潟記念 歴史・コース（2026）」、JRA各年リプレイ。脚質・上がりの集計はJRA結果データを基にした公開集計を照合用に使用。
 '''
           if '## ⑳ 新潟記念（新潟芝2000m外・2016〜2025）' not in rtext:
-              race.write_text(rtext.rstrip() + rblock + '\n', encoding='utf-8')
+              race.write_text(rtext.rstrip() + '\n' + rblock + '\n', encoding='utf-8')
 
           races = Path('log/races.csv')
           rows = races.read_text(encoding='utf-8')
@@ -102,7 +99,6 @@ JRA公式2026年版の過去10年では、1人気【1-3-1-5】複勝50.0%、2人
           python3 log/validate.py || true
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git rm .github/workflows/tmp-niigata-kinen-collect.yml
           git add references/コース別_脚質枠_補正表_夏開催追記.md references/レース別_過去傾向データ.md log/races.csv
           git commit -m '収録: 新潟芝2000外と新潟記念の傾向を追加'
           git push origin HEAD:collect/2026-niigata-kinen
