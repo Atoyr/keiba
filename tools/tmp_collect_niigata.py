@@ -1,4 +1,5 @@
 from pathlib import Path
+import subprocess
 
 course = Path('references/コース別_脚質枠_補正表_夏開催追記.md')
 text = course.read_text(encoding='utf-8')
@@ -77,3 +78,10 @@ rows = races.read_text(encoding='utf-8')
 if '2026_niigata_kinen,' not in rows:
     row = '2026_niigata_kinen,2026-08-30,新潟記念,G3,新潟芝2000外,11,,,,,,,,,,,,,収録C0-C6完了 / 種別=コース補正表+レース別傾向 / 2025年から別定 / JRA2026過去10年=1人気複勝50.0%・2人気60.0%・6〜10人気11頭3着内 / 追込複勝31.0%・上がり1位複勝75.0% / 近6年1〜2枠0-0-0-19は加算層どまり / 三連複万馬券7/10 / 予想前メタデータ行のため馬場・ペース・結果は未記入\n'
     races.write_text(rows.rstrip('\n') + '\n' + row, encoding='utf-8')
+
+subprocess.run(['python3', 'log/validate.py'], check=True)
+subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+subprocess.run(['git', 'add', 'references/コース別_脚質枠_補正表_夏開催追記.md', 'references/レース別_過去傾向データ.md', 'log/races.csv'], check=True)
+subprocess.run(['git', 'commit', '-m', '収録: 新潟芝2000外と新潟記念の傾向を追加'], check=True)
+subprocess.run(['git', 'push', 'origin', 'HEAD:collect/2026-niigata-kinen'], check=True)
