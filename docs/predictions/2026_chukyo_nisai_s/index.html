@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中京2歳ステークス 2026 予想ボード</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=DotGothic16&display=swap');
+
+  :root{
+    --board:#101613;
+    --panel:#18211b;
+    --panel-2:#1e2a22;
+    --line:#2c372f;
+    --text:#ece7da;
+    --dim:#8fa096;
+    --led:#ffb84d;
+    --led-dim:#8a6a35;
+    --turf:#57b87b;
+    --crimson:#e2564f;
+    --gold:#d9b04c;
+    --w1:#f2f0e8; --w2:#15181a; --w3:#c93a3a; --w4:#2c62c9;
+    --w5:#e3c53a; --w6:#2f9e5c; --w7:#df8034; --w8:#ec8fb4;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--board);
+    color:var(--text);
+    font-family:'Zen Kaku Gothic New',sans-serif;
+    line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:72px;
+  }
+  .led{font-family:'DotGothic16',monospace;letter-spacing:.04em}
+  .wrap{max-width:760px;margin:0 auto;padding:0 14px}
+
+  .vision{
+    background:
+      linear-gradient(180deg, rgba(255,184,77,.05), transparent 55%),
+      repeating-linear-gradient(0deg, transparent 0 3px, rgba(0,0,0,.22) 3px 4px),
+      #0b100d;
+    border-bottom:1px solid var(--line);
+    padding:26px 14px 20px;
+  }
+  .vision-inner{max-width:760px;margin:0 auto}
+  .vision-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .grade-tag{
+    font-family:'DotGothic16',monospace;font-size:13px;color:#0b100d;
+    background:var(--gold);padding:2px 10px;border-radius:2px;
+  }
+  .regime-tag{
+    font-size:11px;color:var(--led);border:1px solid var(--led-dim);
+    padding:2px 9px;border-radius:2px;letter-spacing:.06em;
+  }
+  .race-title{
+    font-family:'Shippori Mincho',serif;font-weight:800;
+    font-size:34px;line-height:1.15;margin-top:8px;color:#fdf9ee;
+    text-shadow:0 0 18px rgba(255,184,77,.18);
+  }
+  .race-meta{margin-top:6px;font-size:12.5px;color:var(--dim)}
+  .race-meta b{color:var(--text)}
+
+  .pace-gauge{margin-top:16px;border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:11px 13px}
+  .pg-label{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:6px}
+  .pg-label .led{color:var(--led);font-size:15px}
+  .pg-track{position:relative;height:10px;border-radius:5px;overflow:hidden;
+    background:linear-gradient(90deg,var(--turf) 0 33%, #b8973a 33% 60%, var(--crimson) 60% 100%);opacity:.9}
+  .pg-needle{position:absolute;top:-3px;width:3px;height:16px;background:#fff;border-radius:2px;box-shadow:0 0 6px rgba(255,255,255,.8)}
+  .pg-zones{display:flex;justify-content:space-between;font-size:10px;color:var(--dim);margin-top:4px}
+
+  .sec-head{
+    display:flex;align-items:baseline;gap:10px;margin:34px 0 14px;
+    padding-bottom:7px;border-bottom:1px solid var(--line);
+  }
+  .sec-num{font-family:'DotGothic16',monospace;font-size:13px;color:var(--led)}
+  .sec-title{font-family:'Shippori Mincho',serif;font-weight:800;font-size:20px;color:#fdf9ee}
+  .sec-sub{margin-left:auto;font-size:10.5px;color:var(--dim)}
+
+  .waku{
+    display:inline-flex;align-items:center;justify-content:center;
+    min-width:26px;height:26px;padding:0 4px;border-radius:4px;
+    font-family:'DotGothic16',monospace;font-size:15px;font-weight:700;
+    border:1px solid rgba(255,255,255,.25);
+  }
+  .waku[data-w="1"]{background:var(--w1);color:#15181a}
+  .waku[data-w="2"]{background:var(--w2);color:#f2f0e8;border-color:#555}
+  .waku[data-w="3"]{background:var(--w3);color:#fff}
+  .waku[data-w="4"]{background:var(--w4);color:#fff}
+  .waku[data-w="5"]{background:var(--w5);color:#15181a}
+  .waku[data-w="6"]{background:var(--w6);color:#fff}
+  .waku[data-w="7"]{background:var(--w7);color:#fff}
+  .waku[data-w="8"]{background:var(--w8);color:#15181a}
+
+  .marks{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:9px}
+  .mark-card{
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:11px 12px;position:relative;
+  }
+  .mark-card .glyph{
+    position:absolute;top:9px;right:11px;
+    font-family:'Shippori Mincho',serif;font-weight:800;font-size:21px;
+  }
+  .m-honmei{border-color:var(--gold);box-shadow:0 0 0 1px var(--gold), 0 0 16px rgba(217,176,76,.15)}
+  .m-honmei .glyph{color:var(--gold)}
+  .m-taikou .glyph{color:var(--turf)}
+  .m-tana .glyph{color:var(--led)}
+  .m-renka .glyph{color:var(--dim)}
+  .m-myoumi{border-color:#7f6fb8}
+  .m-myoumi .glyph{color:#a795e6}
+  .m-keshi{opacity:.55}
+  .m-keshi .glyph{color:var(--crimson)}
+  .mc-top{display:flex;align-items:center;gap:8px}
+  .mc-horse{font-weight:700;font-size:14.5px;margin-top:7px;color:#fdf9ee}
+  .mc-sub{font-size:11px;color:var(--dim);margin-top:1px}
+  .mc-stats{
+    display:flex;gap:12px;margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);
+    font-size:10.5px;color:var(--dim);
+  }
+  .mc-stats b{font-family:'DotGothic16',monospace;font-size:16px;color:var(--led);font-weight:400;margin-left:3px}
+  .mc-stats .r-hot b{color:#c9a7ff;text-shadow:0 0 8px rgba(167,149,230,.6)}
+
+  .tabs{display:flex;gap:7px;margin-bottom:10px}
+  .tab{
+    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--dim);
+    font-family:inherit;font-size:12.5px;font-weight:700;padding:9px 6px;border-radius:6px;cursor:pointer;
+  }
+  .tab[aria-selected="true"]{background:var(--panel-2);border-color:var(--led-dim);color:var(--led)}
+  .pace-panel{display:none}
+  .pace-panel.on{display:block}
+  .pace-card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .pace-desc{font-size:12.5px;color:var(--text);margin-bottom:12px}
+  .phases{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+  @media(max-width:560px){.phases{grid-template-columns:1fr}}
+  .phase h5{font-size:11px;color:var(--led);font-family:'DotGothic16',monospace;margin-bottom:5px}
+  .track{
+    position:relative;height:170px;border-radius:6px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 27px, rgba(255,255,255,.045) 27px 28px),
+      linear-gradient(180deg,#24382b, #1c2c21);
+    border:1px solid var(--line);
+  }
+  .track::before{content:"内";position:absolute;left:5px;top:3px;font-size:9px;color:var(--dim)}
+  .track::after{content:"外";position:absolute;left:5px;bottom:3px;font-size:9px;color:var(--dim)}
+  .track .dir{position:absolute;right:6px;top:3px;font-size:9px;color:var(--dim);letter-spacing:.06em}
+  .track[data-dir="rtl"] .dir::before{content:"◀ 進行方向"}
+  .track[data-dir="ltr"] .dir::before{content:"進行方向 ▶"}
+
+  .runner{
+    position:absolute;transform:translate(-50%,-50%);
+    top:calc(16% + var(--io) * 0.62%);
+    display:flex;flex-direction:column;align-items:center;z-index:2;
+  }
+  .track[data-dir="rtl"] .runner{left:calc(8% + var(--fwd) * 0.84%)}
+  .track[data-dir="ltr"] .runner{left:calc(92% - var(--fwd) * 0.84%)}
+  .runner .uma{width:34px;height:34px;fill:#c9a06a;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+  .track[data-dir="ltr"] .runner .uma{transform:scaleX(-1)}
+  .runner .rn{display:flex;align-items:center;gap:2px;margin-top:-7px}
+  .runner .rn .waku{min-width:16px;height:16px;padding:0 3px;border-radius:9px;font-size:10.5px}
+  .runner .mk{font-family:'Shippori Mincho',serif;font-weight:800;font-size:12px;font-style:normal;color:#ece7da;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+  .runner .nm{font-size:9px;font-style:normal;color:var(--dim);margin-top:1px;white-space:nowrap}
+  .runner.hot .uma{fill:var(--gold);filter:drop-shadow(0 0 6px rgba(217,176,76,.55))}
+  .runner.hot .mk{color:var(--gold)}
+  .runner.hot .nm{color:var(--text)}
+  .runner.myoumi .uma{fill:#a795e6;filter:drop-shadow(0 0 6px rgba(167,149,230,.45))}
+  .runner.myoumi .mk{color:#c9a7ff}
+  .runner.keshi{opacity:.8}
+  .runner.keshi .uma{fill:#8a5a52}
+  .runner.keshi .mk{color:var(--crimson)}
+  .phase-note{margin-top:7px;font-size:10.5px;color:var(--dim);line-height:1.55}
+  .note-line{
+    margin-top:12px;font-size:12.5px;padding:9px 12px;border-radius:6px;
+    background:var(--panel-2);border-left:3px solid var(--gold);
+  }
+
+  details.horse{background:var(--panel);border:1px solid var(--line);border-radius:8px;margin-bottom:8px;overflow:hidden}
+  details.horse summary{list-style:none;cursor:pointer;padding:11px 13px;display:flex;align-items:center;gap:10px}
+  details.horse summary::-webkit-details-marker{display:none}
+  .sum-glyph{font-family:'Shippori Mincho',serif;font-size:20px;font-weight:800;width:24px;text-align:center}
+  .sum-name{font-weight:700;font-size:14.5px;color:#fdf9ee}
+  .sum-sub{font-size:10.5px;color:var(--dim)}
+  .score-wrap{margin-left:auto;text-align:right;min-width:96px}
+  .score-bar{height:5px;border-radius:3px;background:var(--panel-2);overflow:hidden;margin-bottom:3px;display:block}
+  .score-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--led-dim),var(--led))}
+  .score-num{font-family:'DotGothic16',monospace;font-size:19px;color:var(--led)}
+  .score-num small{font-size:9px;color:var(--dim);font-family:'Zen Kaku Gothic New',sans-serif;letter-spacing:.1em}
+  .breakdown{padding:2px 13px 13px;border-top:1px dashed var(--line)}
+  .calc{width:100%;border-collapse:collapse;margin-top:9px;font-size:12.5px}
+  .calc td{padding:5px 0;border-bottom:1px solid #232f27}
+  .calc td:first-child{color:var(--dim)}
+  .calc td:last-child{text-align:right;font-family:'DotGothic16',monospace;font-size:14px}
+  .calc tr.total td{border-bottom:none;font-weight:700;padding-top:8px;color:#fdf9ee}
+  .calc tr.total td:last-child{font-size:18px;color:var(--led)}
+  .plus{color:var(--turf)} .minus{color:var(--crimson)}
+  .reason{margin-top:10px;padding:9px 11px;background:var(--panel-2);border-radius:6px;font-size:12px;line-height:1.6}
+  .reason.keshi{background:#3a2020;border-left:3px solid var(--crimson)}
+  .reason .tag{font-weight:700;font-size:10.5px;color:var(--crimson);display:block;margin-bottom:2px}
+
+  .gate{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .gate-row{display:flex;align-items:center;gap:11px;padding:9px 13px;border-bottom:1px solid #232f27;font-size:12.5px}
+  .gate-row:last-child{border-bottom:none}
+  .lamp{
+    width:11px;height:11px;border-radius:50%;flex:none;
+    background:#39463d;border:1px solid var(--line);
+  }
+  .lamp.pass{background:var(--turf);box-shadow:0 0 8px rgba(87,184,123,.7)}
+  .lamp.fail{background:var(--crimson);box-shadow:0 0 8px rgba(226,86,79,.8)}
+  .gate-id{font-family:'DotGothic16',monospace;font-size:13px;color:var(--dim);width:34px;flex:none}
+  .gate-name{color:var(--text)}
+  .gate-note{margin-left:auto;font-size:10.5px;color:var(--dim);text-align:right;max-width:38%}
+  .gate-verdict{
+    margin-top:10px;padding:10px 13px;border-radius:6px;font-size:13px;font-weight:700;
+    background:rgba(87,184,123,.1);border:1px solid var(--turf);color:var(--turf);
+  }
+  .gate-verdict.blocked{background:rgba(226,86,79,.1);border-color:var(--crimson);color:var(--crimson)}
+
+  .bet-split{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+  @media(max-width:560px){.bet-split{grid-template-columns:1fr}}
+  .bet-col{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px}
+  .bet-col h4{font-family:'Shippori Mincho',serif;font-size:15.5px;color:#fdf9ee;margin-bottom:2px}
+  .bet-col .role{font-size:10.5px;color:var(--dim);margin-bottom:10px}
+  .bet-type{
+    font-family:'DotGothic16',monospace;font-size:11px;color:var(--led);
+    border:1px solid var(--led-dim);padding:1px 7px;border-radius:3px;display:inline-block;margin-bottom:4px;
+  }
+  .bet-line{padding:8px 0;border-bottom:1px dashed var(--line)}
+  .bet-line:last-child{border-bottom:none}
+  .bet-formula{font-size:13px;font-weight:500;margin:2px 0;color:var(--text)}
+  .bet-cost{font-size:11.5px;color:var(--dim);display:flex;justify-content:space-between;margin-top:2px}
+  .bet-cost b{color:var(--text);font-family:'DotGothic16',monospace;font-weight:400;font-size:13px}
+  .bet-total{margin-top:12px;padding-top:10px;border-top:1px solid var(--led-dim);display:flex;justify-content:space-between;align-items:baseline}
+  .bet-total span{font-size:10.5px;color:var(--dim)}
+  .bet-total b{font-family:'DotGothic16',monospace;font-size:22px;font-weight:400;color:var(--led)}
+  .warn{margin-top:9px;font-size:11px;color:#f0a5a0;background:#3a2020;padding:7px 10px;border-radius:5px;line-height:1.5}
+
+  .footer-note{
+    max-width:760px;margin:40px auto 0;padding:14px 16px;text-align:center;
+    font-size:11px;color:var(--dim);border-top:1px solid var(--line);line-height:1.7;
+  }
+  .footer-note .led{color:var(--led-dim)}
+  .swatch{
+    display:inline-block;border:1px dashed var(--line);color:var(--dim);
+    font-size:10px;padding:2px 8px;border-radius:3px;margin:20px 14px 0;
+  }
+  @media (prefers-reduced-motion: no-preference){
+    .m-honmei{animation:pulse 3.2s ease-in-out infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 0 0 1px var(--gold),0 0 12px rgba(217,176,76,.12)}50%{box-shadow:0 0 0 1px var(--gold),0 0 22px rgba(217,176,76,.28)}}
+  }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="uma" viewBox="0 0 128 128"><path d="M101.65,56.28c0,0,3.77-1.29,6.45,2.38c2.68,3.67,1.6,7.93,5.19,12.87c2.26,3.1,5.07,2.26,7.99,1.42 c2.99-0.85,5.26-0.94,5.36,0.99c0.03,0.58-0.73,4.22-3.97,7.55c-3.57,3.67-8.39,6.25-15.58,3.43c-6.58-2.58-8.42-11.17-8.42-11.17 L101.65,56.28z"/><path d="M58.46,44.66c0,0,7.8-4.65,6.25-9.23c-1.64-4.85-7.64-0.69-8.94-2.28 c-1.43-1.76,5.86-6.16,1.69-10.72s-8.61,1.9-10.13,0.1c-1.49-1.77,3.47-5.56,0.3-9.43s-8.54-0.2-10.13,0.99 c-1.17,0.88-3.38,2.48-6.16,3.08c-2.78,0.6-7.25-1.09-11.12-1.09s-9.63,2.58-10.82,7.64s-1.89,7.45-2.78,7.84s-3.38,0-3.47,1.79 s2.38,2.28,5.76,2.08s8.14-2.58,10.13-5.06s3.67-6.25,3.67-6.25L58.46,44.66z"/><path d="M30.56,70.38c0,0-5.26,3.28-7.94,4.07c-2.68,0.79-6.25-0.3-8.74,2.18 c-2.48,2.48-1.09,4.77-2.08,7.25c-0.99,2.48-4.85,6.23-4.47,9.93c0.5,4.86,4.72,7.2,4.72,7.2s4.02-3.82,3.92-7.4s-0.1-5.26,0.4-6.95 s2.48-4.67,3.97-5.16c1.49-0.5,6.85-0.3,9.23-0.4s6.85-0.5,6.85-0.5L30.56,70.38z"/><path d="M87.05,59.56L62.63,80.8l-1.27,4.69c0,0,3.95-0.67,5.24-1.07c1.29-0.4,3.13-0.84,3.13-0.84 s0.63,0.83,1.04,2.88c0.5,2.48,0.4,4.07,0.2,4.37c-0.55,0.82-4.37,2.38-5.86,2.48s-5.26-0.53-7.05,2.28 c-1.39,2.18-0.66,3.15-0.79,3.67c-0.2,0.79-1.84,1.24-1.24,2.73s8.09,0.65,8.09,0.65s0.47-2.02,0.89-2.08 c1.04-0.15,2.78-0.6,3.87-1.99s9.53-1.99,10.42-3.77c1.29-2.58-0.2-5.96-0.3-9.13s-0.1-5.91,0.15-6.45c2.88-1.69,6.7-5.26,6.7-5.26 l6.85-12.01L87.05,59.56z"/><path d="M31.06,51.91c0.3,1.04,0.69,2.38,0.89,3.57c0.2,1.19,0.3,2.98,0.3,2.98s-3.92,2.28-4.47,5.96 c-0.51,3.45,0.12,9.11,1.71,11.99c1.59,2.88,4.1,5.14,6.7,6.03c2.82,0.97,6.24,2.85,12.81,3.43c4.57,0.4,10.92,1.29,18.76-2.68 c7.84-3.97,14.22-13.6,15.31-15.59s3.28-5.16,4.37-4.27c1.09,0.89-1.99,2.98-2.78,7.05c-0.79,4.07,0.26,8.97,6.06,10.72 c6.16,1.86,14.12-1.19,15.61-12.81s-5.29-19.73-11.54-22.93c-4.86-2.49-10.24-2.7-13.48-1.79c-1.76,0.5-3.3,1.89-4.84,2.38 c-1.26,0.41-6.75,0.58-9.68,0.4c-3.43-0.21-2.66-1.5-5.73-3.49c-3.08-1.99-4.02-1.41-5.19-2.57c-1.51-1.49-7.48-10.22-15.69-15.69 c-7.15-4.77-11.17-5.11-11.17-5.11s0.67-1.94,0.2-5.01c-0.3-1.94-1.99-5.21-3.08-5.31c-1.04-0.1-2.94,2.72-3.43,5.36 c-0.6,3.23,0.3,5.36,0.3,5.36s-0.22,6.55-3.95,11.02s11.91,2.23,14.07,3.2c2.16,0.97,3.86,5.58,3.57,9.61 C36.34,48.93,30.98,51.65,31.06,51.91z"/><path d="M41.63,82.07c0,0-0.74,2.01-1.12,2.31c-0.37,0.3-2.83,3.05-3.95,4.17 c-1.12,1.12-2.53,2.66-3.13,3.18s-3.11,1.89-2.98,4.49c0.2,4,2.18,4.39,2.61,6.48c0.35,1.73,0.7,4.15,1.86,6.03 c1.34,2.16,3.23,3.3,6.21,3.3c2.98,0,4.74-5.98,4.74-5.98s-2.61-3.72-3.8-3.5c-1.19,0.22-1.39,1.39-2.08,0.97 c-0.81-0.49-1.07-2.28-1.29-3.25c-0.22-0.97-0.82-2.13-0.45-2.58c0.37-0.45,4.16-2.44,6.13-3.77c3.3-2.23,11.91-8.94,11.91-8.94 s5.97-15.45-5.88-13.55C40.22,73.06,41.63,82.07,41.63,82.07z"/><path d="M95.89,59.36c-2.92-0.49-10.97,3.8-11.81,14.84c-0.45,5.91-1.27,10.7-1.64,12.26 c-0.37,1.56-1.04,3.65-1.41,3.95c-0.37,0.3-2.5,1.72-4.19,4.19c-1.74,2.53-1.24,5.19-1.76,5.93s-2.51,2.41-4.19,4.1 c-1.14,1.14-4.96,0.97-6.45,2.68c-1.49,1.71-1.27,3.57-1.27,3.57s-2.88,0.74-3.7,2.68c-0.82,1.94,1.09,4.39,2.73,4.62 s5.17,0.81,5.51,0.45c1.09-1.19,0.3-3.72,0.3-3.72s1.64,0,3.13-2.01s3.5-3.28,5.21-4.69s8.09-6.04,9.31-8.27 c1.61-2.95,1.04-5.73,2.16-7.52c1.12-1.79,3.3-3.7,7.4-7.05c3.28-2.68,7.09-5.04,9.78-11.67C108.84,64.17,97.68,59.66,95.89,59.36z"/><path d="M33.96,33.37c-1.19,0.45-2.01,0.37-1.94,1.34c0.07,0.97,2.98,3.35,2.23,7.89 s-3.65,7-6.33,7.89s-5.56,0.77-5.56,0.77l-3.82,4.37c0,0,0.25,3.62-2.18,5.26c-1.8,1.21-2.88,0.84-2.88,0.84s-1.6,1.37-3.43,0.79 c-2.38-0.74-6.55-3.72-6.11-10.18c0.41-5.94,4.82-9.61,5.81-11.86c0.46-1.06,0.25-5.16,0.25-5.16s5.76-1.39,8.64-4.72 c2.05-2.37,3.82-5.86,3.92-7.3c0.1-1.44,16.93,5.06,16.93,5.06L33.96,33.37z"/><path d="M14.42,55.34c0-0.3-1.49-2.87,0.22-3.8c1.13-0.61,2.38,0.3,2.27,1.86c-0.11,1.5-0.78,2.05-0.78,2.05 s0.15,0.78-0.41,3.61c-0.42,2.15-1.23,2.42-1.75,2.83c-0.39,0.31-2.35,0.97-2.05,0.48c0.3-0.48,1.79-2.31,2.12-3.98 C14.29,57.15,14.42,55.34,14.42,55.34z"/></symbol></svg><!-- 馬シルエット: Noto Emoji (Apache License 2.0) 由来 -->
+
+
+<header class="vision">
+  <div class="vision-inner">
+    <div class="vision-top">
+      <span class="grade-tag">G3 &#183; SAMPLE</span>
+      <span class="regime-tag">夏ローカルハンデ ── 妙味重視レジーム</span>
+    </div>
+    <h1 class="race-title">サンプル記念</h1>
+    <p class="race-meta">小倉 芝1200m ／ ハンデ ・ <b>7月某日</b> ／ 想定馬場：<b>良（開催2週目・前有利）</b> ／ race_id: <span class="led">2026_sample_kinen</span></p>
+
+    <div class="pace-gauge">
+      <div class="pg-label"><span>ペーススコア（逃げ×2＋先行×1）</span><span class="led">7</span></div>
+      <div class="pg-track"><i class="pg-needle" style="left:58%"></i></div>
+      <div class="pg-zones"><span>0-3 前残り</span><span>4-6 中立</span><span>7+ 前崩れ寄り</span></div>
+    </div>
+  </div>
+</header>
+
+<span class="swatch">※ ダミーデータの雛形。実データに差し替えて使用</span>
+
+<main class="wrap">
+
+  <!-- 01 印一覧 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><span class="sec-title">印一覧</span><span class="sec-sub">MARKS</span></div>
+    <div class="marks">
+
+      <div class="mark-card m-honmei">
+        <span class="glyph">&#9678;</span>
+        <div class="mc-top"><span class="waku" data-w="5">7</span></div>
+        <div class="mc-horse">サンプルホース</div>
+        <div class="mc-sub">川田（継続）・先行</div>
+        <div class="mc-stats"><span>評価<b>82</b></span><span>R<b>2.4</b></span></div>
+      </div>
+
+      <div class="mark-card m-taikou">
+        <span class="glyph">○</span>
+        <div class="mc-top"><span class="waku" data-w="8">12</span></div>
+        <div class="mc-horse">ダミーゲイル</div>
+        <div class="mc-sub">ルメール（乗替）・差し</div>
+        <div class="mc-stats"><span>評価<b>78</b></span><span>R<b>3.1</b></span></div>
+      </div>
+
+      <div class="mark-card m-tana">
+        <span class="glyph">▲</span>
+        <div class="mc-top"><span class="waku" data-w="3">4</span></div>
+        <div class="mc-horse">テストプリンス</div>
+        <div class="mc-sub">武豊（継続）・先行</div>
+        <div class="mc-stats"><span>評価<b>71</b></span><span>R<b>2.0</b></span></div>
+      </div>
+
+      <div class="mark-card m-renka">
+        <span class="glyph">△</span>
+        <div class="mc-top"><span class="waku" data-w="6">9</span></div>
+        <div class="mc-horse">モックレディ</div>
+        <div class="mc-sub">戸崎（継続）・差し</div>
+        <div class="mc-stats"><span>評価<b>66</b></span><span>R<b>2.6</b></span></div>
+      </div>
+
+      <div class="mark-card m-myoumi">
+        <span class="glyph">☆</span>
+        <div class="mc-top"><span class="waku" data-w="7">11</span></div>
+        <div class="mc-horse">サンプルノヴァ</div>
+        <div class="mc-sub">横山武（乗替）・追込</div>
+        <div class="mc-stats"><span>評価<b>61</b></span><span class="r-hot">R<b>4.2</b></span><span>妙味<b>73</b></span></div>
+      </div>
+
+      <div class="mark-card m-keshi">
+        <span class="glyph">✕</span>
+        <div class="mc-top"><span class="waku" data-w="2">2</span></div>
+        <div class="mc-horse">ダミーボルト</div>
+        <div class="mc-sub">テン乗り（人気）・逃げ</div>
+        <div class="mc-stats"><span>評価<b>52</b></span><span>R<b>1.3</b></span></div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 02 展開2パターン -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><span class="sec-title">展開2パターン</span><span class="sec-sub">LAST 4F &#183; 隊列</span></div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-pace="a">A 前残り型（本線）</button>
+      <button class="tab" role="tab" aria-selected="false" data-pace="b">B 前崩れ型（ハイペース）</button>
+    </div>
+
+    <div class="pace-panel on" data-panel="a">
+      <div class="pace-card">
+        <p class="pace-desc">②が主張しハナ、◎⑦は好位イン。テン34秒前後で落ち着けば開催2週目の前有利馬場がそのまま結果に直結する。</p>
+        <div class="phases">
+          <div class="phase"><h5>START</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner keshi" style="--fwd:12;--io:22"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner hot" style="--fwd:30;--io:35"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner" style="--fwd:34;--io:60"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+              <span class="runner" style="--fwd:62;--io:48"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner hot" style="--fwd:70;--io:75"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner myoumi" style="--fwd:88;--io:68"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+            </div>
+            <p class="phase-note">②単騎、◎⑦は3番手イン確保</p>
+          </div>
+          <div class="phase"><h5>残り4F</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner keshi" style="--fwd:10;--io:24"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner hot" style="--fwd:22;--io:36"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner" style="--fwd:36;--io:58"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+              <span class="runner" style="--fwd:58;--io:52"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner hot" style="--fwd:60;--io:80"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner myoumi" style="--fwd:84;--io:72"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+            </div>
+            <p class="phase-note">隊列凝縮、○⑫が外から進出開始</p>
+          </div>
+          <div class="phase"><h5>ゴール前</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner hot" style="--fwd:8;--io:30"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner keshi" style="--fwd:26;--io:20"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner hot" style="--fwd:18;--io:68"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner" style="--fwd:30;--io:50"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+              <span class="runner" style="--fwd:52;--io:62"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner myoumi" style="--fwd:44;--io:84"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+            </div>
+            <p class="phase-note">◎⑦抜け出し、○⑫外強襲まで</p>
+          </div>
+        </div>
+        <p class="note-line">想定決着：◎7 → ○12 → ▲4（☆11は3着押上げ候補）</p>
+      </div>
+    </div>
+
+    <div class="pace-panel" data-panel="b">
+      <div class="pace-card">
+        <p class="pace-desc">②に他の先行勢が絡みテン32秒台の消耗戦。前が総崩れなら差し・追込の◎⑦→☆⑪シフト。</p>
+        <div class="phases">
+          <div class="phase"><h5>START</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner keshi" style="--fwd:10;--io:22"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner" style="--fwd:14;--io:48"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+              <span class="runner hot" style="--fwd:38;--io:36"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner" style="--fwd:60;--io:50"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner hot" style="--fwd:72;--io:76"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner myoumi" style="--fwd:88;--io:66"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+            </div>
+            <p class="phase-note">②に▲④が絡みハイラップ</p>
+          </div>
+          <div class="phase"><h5>残り4F</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner keshi" style="--fwd:14;--io:26"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner" style="--fwd:20;--io:50"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+              <span class="runner hot" style="--fwd:40;--io:40"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner hot" style="--fwd:52;--io:78"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner" style="--fwd:66;--io:56"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner myoumi" style="--fwd:78;--io:82"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+            </div>
+            <p class="phase-note">前失速の兆候、差し勢が射程に</p>
+          </div>
+          <div class="phase"><h5>ゴール前</h5>
+            <div class="track" data-dir="rtl"><span class="dir"></span>
+              <span class="runner hot" style="--fwd:10;--io:72"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">○</em><span class="waku" data-w="8">12</span></span><i class="nm">ゲイル</i></span>
+              <span class="runner hot" style="--fwd:16;--io:44"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">◎</em><span class="waku" data-w="5">7</span></span><i class="nm">サンプ</i></span>
+              <span class="runner myoumi" style="--fwd:24;--io:86"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">☆</em><span class="waku" data-w="7">11</span></span><i class="nm">ノヴァ</i></span>
+              <span class="runner" style="--fwd:44;--io:58"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">△</em><span class="waku" data-w="6">9</span></span><i class="nm">モック</i></span>
+              <span class="runner keshi" style="--fwd:70;--io:24"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">✕</em><span class="waku" data-w="2">2</span></span><i class="nm">ボルト</i></span>
+              <span class="runner" style="--fwd:60;--io:48"><svg class="uma" aria-hidden="true"><use href="#uma"/></svg><span class="rn"><em class="mk">▲</em><span class="waku" data-w="3">4</span></span><i class="nm">テスト</i></span>
+            </div>
+            <p class="phase-note">外差し決着、☆⑪が3着突入</p>
+          </div>
+        </div>
+        <p class="note-line">想定決着：○12 → ◎7 → ☆11（前総崩れ・▲4は圏外）</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 各馬評価 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><span class="sec-title">各馬評価</span><span class="sec-sub">ベース点×合成係数＋加算層</span></div>
+
+    <details class="horse" open>
+      <summary>
+        <span class="sum-glyph" style="color:var(--gold)">&#9678;</span>
+        <span class="waku" data-w="5">7</span>
+        <span><span class="sum-name">サンプルホース</span><br><span class="sum-sub">先行・5枠・川田（継続）</span></span>
+        <span class="score-wrap"><span class="score-bar"><i style="width:82%"></i></span><span class="score-num">82<small> PT</small></span></span>
+      </summary>
+      <div class="breakdown">
+        <table class="calc">
+          <tr><td>ベース点</td><td>75</td></tr>
+          <tr><td>コース適性×バイアス（合成係数）</td><td class="plus">×1.10</td></tr>
+          <tr><td>ねじれ補正（R2.4）</td><td>±0</td></tr>
+          <tr><td>上がり3F補正</td><td class="minus">-1</td></tr>
+          <tr><td>枠補正（5枠好調）</td><td class="plus">+1</td></tr>
+          <tr class="total"><td>最終評価点</td><td>82</td></tr>
+        </table>
+        <p class="reason">テン速い先行×夏小倉2戦2勝。前残り本線・崩れ展開でも好位から粘れる二面性が◎の根拠（複数根拠）。</p>
+      </div>
+    </details>
+
+    <details class="horse">
+      <summary>
+        <span class="sum-glyph" style="color:var(--crimson)">✕</span>
+        <span class="waku" data-w="2">2</span>
+        <span><span class="sum-name">ダミーボルト</span><br><span class="sum-sub">逃げ・2枠・テン乗り</span></span>
+        <span class="score-wrap"><span class="score-bar"><i style="width:52%"></i></span><span class="score-num">52<small> PT</small></span></span>
+      </summary>
+      <div class="breakdown">
+        <table class="calc">
+          <tr><td>ベース点</td><td>62</td></tr>
+          <tr><td>コース適性×バイアス（合成係数）</td><td class="minus">×0.85</td></tr>
+          <tr><td>ねじれ補正（R1.3）</td><td class="minus">-3</td></tr>
+          <tr class="total"><td>最終評価点</td><td>52</td></tr>
+        </table>
+        <p class="reason keshi"><span class="tag">消し理由（R07確認済み）</span>同コース同距離の勝ち鞍なし・前走1400m（消しデータ該当）・単勝人気先行R1.3。独立根拠3つで消し。</p>
+      </div>
+    </details>
+  </section>
+
+  <!-- 04 ルールゲート -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><span class="sec-title">ルールゲート</span><span class="sec-sub">確定前チェック &#183; rules_master 全ルール</span></div>
+    <div class="gate">
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R03</span><span class="gate-name">◎の根拠は複数か</span><span class="gate-note">適性＋実績の2本</span></div>
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R04</span><span class="gate-name">スロー前残りを並列検討</span><span class="gate-note">パターンAが本線</span></div>
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R07</span><span class="gate-name">消し馬の好走条件を確認</span><span class="gate-note">✕2は3根拠で消し</span></div>
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R08</span><span class="gate-name">ペースシナリオをロック</span><span class="gate-note">A本線・B保険で固定</span></div>
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R11</span><span class="gate-name">単独根拠の格下げなし</span><span class="gate-note">格下げ0件</span></div>
+      <div class="gate-row"><span class="lamp pass"></span><span class="gate-id">R12</span><span class="gate-name">三連単の頭に◎○両置き</span><span class="gate-note">7・12両頭</span></div>
+      <div class="gate-row"><span class="lamp"></span><span class="gate-id">R13</span><span class="gate-name">G1の1人気を紐保全</span><span class="gate-note">G3のため対象外</span></div>
+    </div>
+    <div class="gate-verdict">GATE CLEAR ── 全ルール遵守を確認。買い目の確定に進む</div>
+  </section>
+
+  <!-- 05 買い目 -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><span class="sec-title">買い目</span><span class="sec-sub">予算 3,000円</span></div>
+    <div class="bet-split">
+      <div class="bet-col">
+        <h4>堅実型</h4>
+        <p class="role">パターンA本線・的中率重視</p>
+        <div class="bet-line">
+          <span class="bet-type">三連複 軸2頭</span>
+          <p class="bet-formula">7・12 → 4・9・11・2</p>
+          <p class="bet-cost"><span>4点 × 200円</span><b>800円</b></p>
+        </div>
+        <div class="bet-line">
+          <span class="bet-type">ワイド</span>
+          <p class="bet-formula">7 − 12</p>
+          <p class="bet-cost"><span>1点 × 400円</span><b>400円</b></p>
+        </div>
+        <div class="bet-total"><span>小計</span><b>1,200</b></div>
+      </div>
+      <div class="bet-col">
+        <h4>穴・強気型</h4>
+        <p class="role">☆11のR4.2妙味・回収率重視</p>
+        <div class="bet-line">
+          <span class="bet-type">三連単 F</span>
+          <p class="bet-formula">7・12 → 7・12・4 → 4・9・11</p>
+          <p class="bet-cost"><span>10点 × 100円</span><b>1,000円</b></p>
+        </div>
+        <div class="bet-line">
+          <span class="bet-type">三連複 軸1頭</span>
+          <p class="bet-formula">11 → 7・12・4・9</p>
+          <p class="bet-cost"><span>6点 × 100円</span><b>600円</b></p>
+        </div>
+        <div class="bet-total"><span>小計</span><b>1,600</b></div>
+        <p class="warn">☆11は前崩れ（B）依存。良馬場でスロー確定なら穴型を半減して堅実型へ回す。</p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<p class="footer-note">
+  馬場は発走直前に確定 ── 本線は固定せず2パターン併記 ／ 馬券は自己責任・予算は無理のない範囲で<br>
+  <span class="led">log: races / predictions / bets へ同時追記済み</span>
+</p>
+
+<script>
+  document.querySelectorAll('.tab').forEach(t=>{
+    t.addEventListener('click',()=>{
+      document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected','false'));
+      t.setAttribute('aria-selected','true');
+      document.querySelectorAll('.pace-panel').forEach(p=>p.classList.remove('on'));
+      document.querySelector('[data-panel="'+t.dataset.pace+'"]').classList.add('on');
+    });
+  });
+</script>
+<script>
+(() => {
+const w=(f,n)=>`<span class="waku" data-w="${f}">${n}</span>`;
+const card=(cls,mark,f,n,name,sub,score,r,myomi='')=>`<div class="mark-card ${cls}"><span class="glyph">${mark}</span><div>${w(f,n)}</div><div class="mc-horse">${name}</div><div class="mc-sub">${sub}</div><div class="mc-stats"><span>評価<b>${score}</b></span><span class="${r>=4?'r-hot':''}">R<b>${r}</b></span>${myomi?`<span>妙味<b>${myomi}</b></span>`:''}</div></div>`;
+const run=(cls,fwd,io,mark,f,n,name)=>`<span class="runner ${cls}" style="--fwd:${fwd};--io:${io}"><svg class="uma"><use href="#uma"/></svg><span class="rn"><em class="mk">${mark}</em>${w(f,n)}</span><i class="nm">${name}</i></span>`;
+const phase=(title,body,note)=>`<div class="phase"><h5>${title}</h5><div class="track" data-dir="ltr"><span class="dir"></span>${body}</div><p class="phase-note">${note}</p></div>`;
+const horse=(open,mark,f,n,name,sub,base,coef,add,final,r,reason)=>`<details class="horse" ${open?'open':''}><summary><span class="sum-glyph">${mark}</span>${w(f,n)}<span><span class="sum-name">${name}</span><br><span class="sum-sub">${sub}</span></span><span class="score-wrap"><span class="score-bar"><i style="width:${Math.min(100,final)}%"></i></span><span class="score-num">${final}<small> PT</small></span></span></summary><div class="breakdown"><table class="calc"><tr><td>ベース点</td><td>${base}</td></tr><tr><td>合成係数</td><td>×${coef}</td></tr><tr><td>加算層</td><td>${add}</td></tr><tr><td>R値</td><td>${r}</td></tr><tr class="total"><td>最終評価点</td><td>${final}</td></tr></table><p class="reason">${reason}</p></div></details>`;
+document.querySelector('.vision').outerHTML=`<header class="vision"><div class="vision-inner"><div class="vision-top"><span class="grade-tag">G3</span><span class="regime-tag">標準 ── 2歳戦R26・能力未知は中立評価</span></div><h1 class="race-title">中京2歳ステークス</h1><p class="race-meta">中京 芝1400m ／ 2026年8月30日 ／ 想定馬場：<b>良80%・稍重20%</b> ／ race_id: <span class="led">2026_chukyo_nisai_s</span></p><div class="pace-gauge"><div class="pg-label"><span>ペーススコア（逃げ×2＋先行×1）</span><span class="led">2</span></div><div class="pg-track"><i class="pg-needle" style="left:16.7%"></i></div><div class="pg-zones"><span>0-3 前残り</span><span>4-6 中立</span><span>7+ 前崩れ寄り</span></div></div></div></header>`;
+document.querySelector('.swatch')?.remove();
+const cards=card('m-honmei','◎',3,3,'サンタンジェロ','西村淳（乗替）・差し','95.2',2.19)+card('m-taikou','○',8,9,'ジーティーマイカ','松山（継続）・先行','91.4',1.47)+card('m-tana','▲',7,7,'ビスケットサンド','北村友（継続）・差し','85.8',2.28)+card('m-renka','△',4,4,'シスキンブルーム','団野（継続）・逃げ','83.2',3.59)+card('m-myoumi','☆',2,2,'バクソウシャチョウ','松若（乗替）・逃げ','77.6',4.77,'6.4')+card('m-myoumi','☆',8,8,'ピコジャック','吉村（乗替）・先行','38.0',4.13,'5.0');
+const a1=run('myoumi',5,18,'☆',2,2,'バクソ')+run('',22,38,'△',4,4,'シスキ')+run('',28,55,'-',5,5,'マルモ')+run('hot',35,78,'○',8,9,'GTマイ')+run('',54,66,'▲',7,7,'ビスケ')+run('hot',72,45,'◎',3,3,'サンタ');
+const a2=run('myoumi',7,20,'☆',2,2,'バクソ')+run('',20,40,'△',4,4,'シスキ')+run('hot',27,78,'○',8,9,'GTマイ')+run('',38,65,'▲',7,7,'ビスケ')+run('hot',45,50,'◎',3,3,'サンタ');
+const a3=run('hot',7,52,'◎',3,3,'サンタ')+run('hot',14,77,'○',8,9,'GTマイ')+run('',22,66,'▲',7,7,'ビスケ')+run('myoumi',31,22,'☆',2,2,'バクソ')+run('',38,40,'△',4,4,'シスキ');
+const b1=run('myoumi',4,18,'☆',2,2,'バクソ')+run('',8,39,'△',4,4,'シスキ')+run('',12,55,'-',5,5,'マルモ')+run('',16,68,'-',6,6,'ジャス')+run('hot',36,80,'○',8,9,'GTマイ')+run('',58,65,'▲',7,7,'ビスケ')+run('hot',74,46,'◎',3,3,'サンタ');
+const b2=run('myoumi',16,20,'☆',2,2,'バクソ')+run('',22,40,'△',4,4,'シスキ')+run('hot',34,78,'○',8,9,'GTマイ')+run('',42,66,'▲',7,7,'ビスケ')+run('hot',50,50,'◎',3,3,'サンタ');
+const b3=run('hot',7,55,'◎',3,3,'サンタ')+run('',14,68,'▲',7,7,'ビスケ')+run('hot',23,79,'○',8,9,'GTマイ')+run('',39,40,'△',4,4,'シスキ')+run('myoumi',48,22,'☆',2,2,'バクソ');
+const horses=horse(1,'◎',3,3,'サンタンジェロ','差し・3枠・西村淳',76,'1.20','末脚+2／枠+1／騎手+1',95.2,2.19,'中京1400mを上がり33.7秒で勝利。初戦は2番手経験があり前残りにも対応。')+horse(0,'○',8,9,'ジーティーマイカ','先行・8枠・松山',84,'1.10','R-3／末脚+1／枠-1／騎手+2',91.4,1.47,'新馬を1.1秒差。R<1.5のため頭固定せず複勝圏に保全。')+horse(0,'▲',7,7,'ビスケットサンド','差し・7枠・北村友',78,'1.10','枠-1／騎手+1',85.8,2.28,'阪神1400mで④に直接先着。')+horse(0,'△',4,4,'シスキンブルーム','逃げ・4枠・団野',72,'1.10','R+2／枠+1／騎手+1',83.2,3.59,'逃げ・好位の両方に実績。')+horse(0,'☆',2,2,'バクソウシャチョウ','逃げ・2枠・松若',66,'1.10','R+4／末脚+1／枠-1／騎手+1',77.6,4.77,'唯一の機械認定逃げ。妙味6.4で全券種に保全。')+horse(0,'-',5,5,'マルモリムソウ','逃げ・5枠・泉谷',68,'1.10','枠+1',75.8,2.82,'新馬逃げ切り。前残りの三連複相手。')+horse(0,'-',6,6,'ジャスパートレノ','逃げ・6枠・中井',55,'1.00','R+2／枠-1',56.0,3.77,'芝適性未知。R26により中立評価。')+horse(0,'-',1,1,'ピコキング','差し・1枠・田口',38,'1.00','R+4／枠-1／騎手+1',42.0,5.84,'前走芝1200mで3.2秒差。構造的消しにはせず無印。')+horse(0,'☆',8,8,'ピコジャック','先行・8枠・吉村',35,'1.00','R+4／枠-1',38.0,4.13,'芝未知を中立評価。Rと8枠妙味で☆保全。');
+const gs=[['R01','③は同コース勝ち＋33.7'],['R08','A/Bをロック'],['R09','⑨R1.47を頭固定しない'],['R11','⑧を低finalだけで消さない'],['R18','具体根拠を記録'],['R20','③は初戦2番手経験'],['R24','☆②⑧を全券種に統一'],['R26','芝未知⑥⑧は中立'],['R28','中帯域・50:50'],['R30','午後降水50%'],['R31','③軸抜けワイド'],['R35','☆②R4.77・⑧R4.13'],['R36','上位③⑨を直積'],['R37','非軸ペア3点']].map(g=>`<div class="gate-row"><span class="lamp pass"></span><span class="gate-id">${g[0]}</span><span>遵守</span><span class="gate-note">${g[1]}</span></div>`).join('');
+document.querySelector('main').innerHTML=`<section><div class="sec-head"><span class="sec-num">01</span><span class="sec-title">印一覧</span><span class="sec-sub">MARKS</span></div><div class="marks">${cards}</div></section><section><div class="sec-head"><span class="sec-num">02</span><span class="sec-title">展開2パターン</span><span class="sec-sub">LAST 4F・隊列</span></div><div class="tabs"><button class="tab" aria-selected="true" data-pace="a">A 隊列確定型（本線60%）</button><button class="tab" aria-selected="false" data-pace="b">B 競り合い型（保険40%）</button></div><div class="pace-panel on" data-panel="a"><div class="pace-card"><p class="pace-desc">②が先手、④⑤⑨が好位。平均以下なら③⑦まで。</p><div class="phases">${phase('START',a1,'②先手、④⑤⑨が好位')}${phase('残り4F',a2,'⑨⑦③が前へ接近')}${phase('ゴール前',a3,'③⑨中心、②④が粘る')}</div><p class="note-line">想定決着：◎3 → ○9 → ▲7 / ☆2 / △4</p></div></div><div class="pace-panel" data-panel="b"><div class="pace-card"><p class="pace-desc">未確定の④⑤⑥が②に競りかける。坂で前が鈍れば③⑦。</p><div class="phases">${phase('START',b1,'②④⑤⑥が前を形成')}${phase('残り4F',b2,'前が広がり③⑦が進出')}${phase('ゴール前',b3,'③⑦中心の差し決着')}</div><p class="note-line">想定決着：◎3 → ▲7 → ○9 / △4</p></div></div></section><section><div class="sec-head"><span class="sec-num">03</span><span class="sec-title">各馬評価</span><span class="sec-sub">ベース点×合成係数＋加算層</span></div>${horses}</section><section><div class="sec-head"><span class="sec-num">04</span><span class="sec-title">ルールゲート</span><span class="sec-sub">rule_fires.csv と一致</span></div><div class="gate">${gs}</div><div class="gate-verdict">GATE CLEAR ── 発火ルールはすべて followed=1</div></section><section><div class="sec-head"><span class="sec-num">05</span><span class="sec-title">買い目</span><span class="sec-sub">予算 3,000円</span></div><div class="bet-split"><div class="bet-col"><h4>堅実型</h4><p class="role">中帯域・三連複軸1頭</p><div class="bet-line"><span class="bet-type">三連複</span><p class="bet-formula">3 → 9・7・4・2・8・5</p><p class="bet-cost"><span>15点 × 100円</span><b>1,500円</b></p></div><div class="bet-total"><span>小計</span><b>1,500</b></div></div><div class="bet-col"><h4>穴・強気型</h4><p class="role">③軸抜け・☆②⑧を保全</p><div class="bet-line"><span class="bet-type">ワイド</span><p class="bet-formula">9-7 / 2-4 / 2-8</p><p class="bet-cost"><span>3点 × 500円</span><b>1,500円</b></p></div><div class="bet-total"><span>小計</span><b>1,500</b></div><p class="warn">馬場・クッション値・当日馬体重は発走前に再確認。</p></div></div></section>`;
+document.querySelector('.footer-note').innerHTML=`馬場は発走直前に確定 ── 本線は固定せず2パターン併記 ／ 馬券は自己責任・予算は無理のない範囲で<br><span class="led">log: races / predictions / bets / rule_fires へ同時追記済み</span>`;
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected','false'));t.setAttribute('aria-selected','true');document.querySelectorAll('.pace-panel').forEach(p=>p.classList.remove('on'));document.querySelector(`[data-panel="${t.dataset.pace}"]`).classList.add('on')}));
+})();
+</script>
+</body>
+</html>
