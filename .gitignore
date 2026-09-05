@@ -4,3 +4,5 @@ cache/
 # jra_result.py が polite_fetch を import するため生成される
 __pycache__/
 *.pyc
+
+_handoff/
