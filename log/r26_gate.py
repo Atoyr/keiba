@@ -18,7 +18,12 @@ import csv
 import datetime as dt
 import os
 import re
+import sys
 from collections import defaultdict
+
+# Windows既定コンソール(cp932)では罫線・✕等でUnicodeEncodeErrorを起こし途中で落ちるため強制UTF-8
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 RACES = os.path.join(BASE, "races.csv")
