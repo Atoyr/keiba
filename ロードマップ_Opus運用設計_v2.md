@@ -417,8 +417,9 @@ rank_score ＝ sim_score ＋ 騎手 ＋ 上がり ＋ 斤量（ハンデ戦） �
 ### TODO（優先順）
 
 - [x] **U1** A-1 `build_profile.py`（2026-09-11 実装。チャレンジC 2026 で初回生成・16頭・欠損0）
-- [ ] **U2** A-3 `analyze.py` アブレーション節＋シミュレーション較正節
-- [ ] **U3** `mark.py`（§5-3）と全頭シミュレーション v3 の入力書式（§5-2）→ paper 並走
+- [x] **U2** A-3 `analyze.py` アブレーション節＋シミュレーション較正節（2026-09-12 実装。§7-1・7-2・7-7 を再現）
+- [x] **U3** `log/mark.py`（§5-3・G-A〜G-O'）と全頭シミュレーション表の書式（`--template`・§5-2）を実装（2026-09-12）。合成データで G-B/C/D/E/G/H/I/N/O が発火し、`--write`→validate ERROR 0 を確認。predictions.csv に sim_pos／s_front／s_mid／s_back／sim_score／agari_diff を列追加
+- [ ] **U3b** paper 並走 2R（候補：9/13 セントライト記念・ローズS。プロファイルと雛形を生成済み）→ B-5 判定
 - [ ] **U4** A-2 `reflect_prep.py`
 - [ ] **U5** A-4／A-5 ファイル分割＋A-6 SKILL 更新（三点同期）
 - [ ] **U6** Phase C 第2回較正レビュー（暫定ルール判定・同族統合・S2 重み表の初回較正）

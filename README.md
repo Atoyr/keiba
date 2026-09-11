@@ -57,7 +57,8 @@ keiba/
     ├── validate.py            … CSVスキーマ検証（ERROR＝ゲートFAIL級を機械チェック）
     ├── analyze.py             … 集計（実際に買った結果：印別成績・ベースライン比較・r_adj分離）
     ├── backtest.py            … 戦略リプレイ（同じログで別戦略なら：印別ベタ買い・頭◎vs◎○ほか）
-    └── calibrate.py           … 確率較正（モデル素点→複勝確率・市場を基準線に Brier で比較）
+    ├── calibrate.py           … 確率較正（モデル素点→複勝確率・市場を基準線に Brier で比較）
+    └── mark.py                … 印 v4 の算出とガードレール（paper 並走中・2026-09-12〜。全頭シミュレーション表＋プロファイル＋オッズ→印・違反一覧）
 ```
 
 ## ライフサイクル（1レースが辿る工程）
@@ -173,6 +174,19 @@ python3 tools/build_profile.py --netkeiba-id 202609040311 --slug 2026_challenge_
 ```
 
 netkeiba の「出馬表・5走表示」1ページと近5走のレースページから、全頭の近5走（通過順・上がり・距離・馬場・着順・格・斤量・騎手）と父・母父を取り、『脚質認定ルール.md』§2〜§5 と末脚指数（ロードマップ v2 §5-2）を機械計算して `references/脚質認定_<日付>_<レース名>.md`（§6書式）と `cache/profile/<slug>.json` を出す。必須列が欠けたら生成せず「取得失敗」で止まる。**当日オッズ・当日人気は取得も出力もしない**（ブラインド評価）。枠順確定前は仮番で出し、確定後に再実行して差し替える。LLM の仕事は生成物の差分レビューと主観分類の確認だけ。
+
+#### 印 v4 の paper 並走（`log/mark.py`・2026-09-12〜・ロードマップ v2 §5-3）
+
+```bash
+python3 tools/build_profile.py --netkeiba-id <12桁> --slug <race_id> --name <レース名>   # 1. プロファイル
+python3 log/mark.py --slug <race_id> --template      # 2. 全頭シミュレーション表と race.json の雛形（S列の機械初期値入り）
+#   3. _handoff/sim/<race_id>.csv を LLM が埋める（base・勝ち筋・崩れ筋・sim_score・加算4項・妙味・tags）。オッズ・人気は見ない
+#   4. _handoff/odds/<race_id>.csv に締切前オッズ（horse_no,win_odds,place_odds_max,popularity）
+python3 log/mark.py --slug <race_id>                 # 5. 判定（ERROR が残れば印は出ない・何度でも再実行）
+python3 log/mark.py --slug <race_id> --write         # 6. predictions.csv へ反映 → validate.py → gate.py
+```
+
+並走中は従来の `#予想`（指示v3 工程）が正で、v4 の印は `predictions.notes` の `v4=paper` 行として比較する。採用判定は §5-3 B-5。
 
 #### レース結果（JRA公式・一次ソース）
 

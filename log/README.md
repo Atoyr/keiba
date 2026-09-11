@@ -191,7 +191,13 @@ band=中 / 荒れ度=5 / 券種=三連複+三連単F / 堅実穴=40:60 / 予算=
 - `in_place` : 複勝圏内 1/0（結果後）
 - `last_3f` : **上がり3F（秒・結果後）**。`tools/jra_result.py` の出力から全頭転記する（2026-08-03導入・T1）
 - `corner4_pos` : **4角通過順位（結果後）**。同上。直線競走（新潟芝1000直等）は4角が無いので空欄
+- `sim_pos` : **想定4角位置（予想時・印v4）**。`tools/build_profile.py` の r_med×(頭数−1)+1 を初期値に、全頭シミュレーション表（S1）で上書きした値。結果後の `corner4_pos` と突合して位置取りモデルを較正する（2026-09-12 追加・ロードマップ v2 §5-2）
+- `s_front` / `s_mid` / `s_back` : **シナリオ別の結論（前残り／中立／前崩れ）** を A（勝ち負け）／B（複勝圏）／C（圏外）／D（構造的に無理）で。`log/mark.py` が機械初期値を置き、LLM の上書きは notes に `上書き=` 理由つきで残す
+- `sim_score` : **今回評価（0〜100）**。base_score を出発点にシナリオ重みで統合した LLM の定性評価。`additive_breakdown` の `シナリオ±X` 項が `sim_score − base_score` と一致する（validate の検算を壊さないための置き方）
+- `agari_diff` : **末脚指数**（近5走の「自身の上がり − レース最速上がり」の中央値・秒）。build_profile が計算。結果後の `last_3f` のレース内順位と突合する
 - `notes`
+
+**印 v4（paper 並走中）の記録方法（2026-09-12〜）：** 係数層を使わないので `composite_coef=1.0`・`coef_breakdown=v4係数なし1.00`。`additive_breakdown` は `シナリオ±X;騎手±X;上がり±X;斤量±X;馬体重±X`（R は加算に入れず `r_adj=0`。R は☆選定と `r_value` 列にだけ残す）。`final_score` ＝ rank_score ＝ sim_score ＋ 4加算。races.notes に `v4=paper / 本線=前残り|中立|前崩れ / 信頼度=高|低` を置き、mark.py の実行履歴は `_handoff/mark_runs/<race_id>/` に残す。全頭シミュレーション表の書式は `python3 log/mark.py --help`。
 
 **`last_3f` / `corner4_pos` を持つ理由（T1）：** 『競馬予想_評価ルール.md』第169項が
 「着順と上がりの乖離＝負けたが上がり最速は展開不利の好走、**次走加点材料**」と定めているのに、

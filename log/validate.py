@@ -98,7 +98,9 @@ EXPECTED_HEADERS = {
                         "additive_total", "additive_breakdown", "r_adj",
                         "final_score", "myomi_score", "popularity", "win_odds",
                         "place_odds_max", "r_value", "finish_pos", "in_place",
-                        "last_3f", "corner4_pos", "notes"],
+                        "last_3f", "corner4_pos",
+                        "sim_pos", "s_front", "s_mid", "s_back", "sim_score", "agari_diff",  # 印v4・2026-09-12
+                        "notes"],
     "bets.csv": ["race_id", "bet_type", "structure", "points", "unit", "cost",
                  "hit", "return", "notes"],
     "rules_master.csv": ["rule_id", "rule_name", "origin_race", "added_date", "status",

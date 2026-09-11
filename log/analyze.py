@@ -29,6 +29,223 @@ def to_f(v):
         return None
 
 
+# ---------- 印 v4／シミュレーション v3 の較正入力（ロードマップ v2 §5-6・2026-09-12）----------
+
+def _spearman(a, b):
+    n = len(a)
+    if n < 3:
+        return None
+
+    def rk(v):
+        s = sorted(range(n), key=lambda i: v[i])
+        r = [0] * n
+        i = 0
+        while i < n:
+            j = i
+            while j + 1 < n and v[s[j + 1]] == v[s[i]]:
+                j += 1
+            for k in range(i, j + 1):
+                r[s[k]] = (i + j) / 2 + 1
+            i = j + 1
+        return r
+    ra, rb = rk(a), rk(b)
+    ma, mb = sum(ra) / n, sum(rb) / n
+    num = sum((x - ma) * (y - mb) for x, y in zip(ra, rb))
+    den = (sum((x - ma) ** 2 for x in ra) * sum((y - mb) ** 2 for y in rb)) ** .5
+    return num / den if den else None
+
+
+def _parse_add(s):
+    d = {}
+    for t in (s or "").split(";"):
+        m = re.match(r"^([^\d+\-]+)([+\-]\d+(?:\.\d+)?)$", t.strip())
+        if m:
+            d[m.group(1)] = d.get(m.group(1), 0) + float(m.group(2))
+    return d
+
+
+def _parse_coef(s):
+    d = {}
+    for t in (s or "").split(";"):
+        m = re.match(r"^([^\d]+)(\d+(?:\.\d+)?)$", t.strip())
+        if m:
+            d[m.group(1)] = float(m.group(2))
+    return d
+
+
+def section_ablation(preds, races):
+    print()
+    print("=" * 60)
+    print("■ 序列アブレーション（群2・分解記録のある行・ロードマップ v2 §5-6）")
+    print("=" * 60)
+    by = defaultdict(list)
+    for p in preds:
+        if to_f(p.get("finish_pos")) is None or to_f(p.get("base_score")) is None or to_f(p.get("final_score")) is None:
+            continue
+        if not p.get("additive_breakdown") or not p.get("coef_breakdown"):
+            continue
+        by[p["race_id"]].append(p)
+    if not by:
+        print("分解記録のある行なし")
+        return
+    ADD4 = ["騎手", "上がり", "斤量", "馬体重"]
+    variants = {
+        "base": lambda p, c, a: to_f(p["base_score"]),
+        "final（記録）": lambda p, c, a: to_f(p["final_score"]),
+        "final−R−枠": lambda p, c, a: to_f(p["final_score"]) - a.get("R", 0) - a.get("枠", 0),
+        "base×適性": lambda p, c, a: to_f(p["base_score"]) * c.get("適性", 1.0),
+        "v4近似（base＋騎手上がり斤量馬体重）": lambda p, c, a: to_f(p["base_score"]) + sum(a.get(k, 0) for k in ADD4),
+        "sim_score": lambda p, c, a: to_f(p.get("sim_score")),
+        "rank_score（sim＋4加算）": lambda p, c, a: (to_f(p.get("sim_score")) + sum(a.get(k, 0) for k in ADD4)) if to_f(p.get("sim_score")) is not None else None,
+        "人気": lambda p, c, a: -to_f(p.get("popularity")) if to_f(p.get("popularity")) is not None else None,
+    }
+    res, pop = defaultdict(list), defaultdict(list)
+    for rid, rs in by.items():
+        if len(rs) < 5:
+            continue
+        fin = [-to_f(p["finish_pos"]) for p in rs]
+        popv = [-to_f(p["popularity"]) for p in rs] if all(to_f(p.get("popularity")) is not None for p in rs) else None
+        for k, fn in variants.items():
+            vals = [fn(p, _parse_coef(p["coef_breakdown"]), _parse_add(p["additive_breakdown"])) for p in rs]
+            if any(v is None for v in vals):
+                continue
+            s = _spearman(vals, fin)
+            if s is not None:
+                res[k].append(s)
+            if popv and k != "人気":
+                s2 = _spearman(vals, popv)
+                if s2 is not None:
+                    pop[k].append(s2)
+    print(f"{'序列':34s} {'着順ρ':>7s} {'人気ρ':>7s}  R数")
+    for k in variants:
+        if res.get(k):
+            pr = f"{sum(pop[k]) / len(pop[k]):7.3f}" if pop.get(k) else "      -"
+            print(f"{k:34s} {sum(res[k]) / len(res[k]):7.3f} {pr}  {len(res[k])}")
+    print("  ※ 着順ρ は大きいほど良い。人気ρ は「人気と同じ並びか」の指標で、v4 は着順ρを保ったまま人気ρを下げるのが目標（§4-3 判断6）")
+    print()
+    print("要素別（n≧5）：")
+    elem = defaultdict(lambda: [0, 0])
+    for rs in by.values():
+        for p in rs:
+            pl = to_f(p["finish_pos"]) <= 3
+            for k, v in _parse_coef(p["coef_breakdown"]).items():
+                if k in ("適性", "バイアス", "枠"):
+                    d = "＞1" if v > 1.0 else ("＜1" if v < 1.0 else "＝1")
+                    elem[f"係数:{k}{d}"][0] += 1
+                    elem[f"係数:{k}{d}"][1] += pl
+            for k, v in _parse_add(p["additive_breakdown"]).items():
+                d = "＋" if v > 0 else ("−" if v < 0 else "0")
+                elem[f"加算:{k}{d}"][0] += 1
+                elem[f"加算:{k}{d}"][1] += pl
+    for k, (n, h) in sorted(elem.items(), key=lambda kv: -kv[1][0]):
+        if n >= 5:
+            print(f"  {k:18s} n={n:3d} 複勝{h / n * 100:3.0f}%")
+    ov = [0, 0]
+    grp = {"両方": [0, 0, 0.0], "印のみ（人気5番以下）": [0, 0, 0.0], "人気のみ（無印）": [0, 0, 0.0]}
+    for rid, rs in by.items():
+        if any(to_f(p.get("popularity")) is None for p in rs):
+            continue
+        marked = {p["horse_no"] for p in rs if (p.get("mark") or "").strip() in ("◎", "○", "▲", "△")}
+        top4 = {p["horse_no"] for p in sorted(rs, key=lambda p: to_f(p["popularity"]))[:4]}
+        ov[0] += len(marked & top4)
+        ov[1] += len(marked)
+        for p in rs:
+            h = p["horse_no"]
+            pl = to_f(p["finish_pos"]) <= 3
+            po = to_f(p.get("place_odds_max")) or 0
+            key = "両方" if (h in marked and h in top4) else ("印のみ（人気5番以下）" if h in marked else ("人気のみ（無印）" if h in top4 else None))
+            if key:
+                g = grp[key]
+                g[0] += 1
+                g[1] += pl
+                g[2] += po if pl else 0
+    print()
+    print(f"印（◎○▲△）と人気上位4頭の重なり {ov[0]}/{ov[1]}")
+    for k, (n, h, r) in grp.items():
+        if n:
+            print(f"  {k:22s} n={n:3d} 複勝{h / n * 100:3.0f}% 複勝上限ROI {r / n * 100:4.0f}%")
+    print("  ※ 人気圏外に付けた印の複勝率がリターンの源泉（ロードマップ v2 §7-7）。n<10 は参考値")
+
+
+def section_sim_calibration(preds, races):
+    print()
+    print("=" * 60)
+    print("■ シミュレーション較正（ロードマップ v2 §5-2 較正ループ）")
+    print("=" * 60)
+    race_by = {r["race_id"]: r for r in races}
+    by = defaultdict(list)
+    for p in preds:
+        if to_f(p.get("sim_pos")) is not None and to_f(p.get("corner4_pos")) is not None:
+            by[p["race_id"]].append(p)
+    rh, mae, cap = [], [], [0, 0]
+    for rid, rs in by.items():
+        if len(rs) < 5:
+            continue
+        pos = [to_f(p["sim_pos"]) for p in rs]
+        act = [to_f(p["corner4_pos"]) for p in rs]
+        s = _spearman(pos, act)
+        if s is not None:
+            rh.append(s)
+        mae.append(sum(abs(a - b) for a, b in zip(pos, act)) / len(rs))
+        p6 = {i for i, v in enumerate(pos) if v <= 6.5}
+        a6 = {i for i, v in enumerate(act) if v <= 6}
+        cap[0] += len(p6 & a6)
+        cap[1] += len(a6)
+    if rh:
+        print(f"(1) 位置取り：想定4角 vs 実4角 ρ={sum(rh) / len(rh):.3f} MAE={sum(mae) / len(mae):.2f}番手 実6番手以内の捕捉 {cap[0]}/{cap[1]}（{len(rh)}R）")
+    else:
+        print("(1) 位置取り：sim_pos と corner4_pos の両方がある行なし（基準線は v2 §7-3：ρ0.544・MAE2.45・捕捉48/56）")
+    main = {}
+    for r in races:
+        m = re.search(r"本線=(前残り|中立|前崩れ)", r.get("notes") or "")
+        if m and (r.get("pace_actual") or r.get("bias_actual")):
+            main[r["race_id"]] = m.group(1)
+    if main:
+        pace_ok = bias_ok = n = 0
+        for rid, sc in main.items():
+            r = race_by[rid]
+            pa = r.get("pace_actual") or ""
+            ba = r.get("bias_actual") or ""
+            n += 1
+            pace_ok += {"前残り": "スロー" in pa, "中立": ("平均" in pa or "イーブン" in pa), "前崩れ": ("ハイ" in pa or "前傾" in pa)}[sc]
+            bias_ok += {"前残り": any(k in ba for k in ("内前", "前有利", "前〜")), "中立": "フラット" in ba, "前崩れ": ("外差し" in ba or "差し" in ba)}[sc]
+        print(f"(2) 本線シナリオ：ペース軸の一致 {pace_ok}/{n}／決着軸の一致 {bias_ok}/{n}（races.notes 本線= のあるレース）")
+    else:
+        print("(2) 本線シナリオ：races.notes に 本線= があり結果入力済みのレースなし")
+    col = {"前残り": "s_front", "中立": "s_mid", "前崩れ": "s_back"}
+    tally = defaultdict(lambda: [0, 0])
+    for p in preds:
+        rid = p["race_id"]
+        if rid not in main or to_f(p.get("finish_pos")) is None:
+            continue
+        v = (p.get(col[main[rid]]) or "").strip()
+        if v in ("A", "B", "C", "D"):
+            tally[v][0] += 1
+            tally[v][1] += to_f(p["finish_pos"]) <= 3
+    if tally:
+        print("(3) 本線シナリオでの S列別 複勝率： " + " ".join(f"{k}={h}/{n}({h / n * 100:.0f}%)" for k, (n, h) in sorted(tally.items())))
+    else:
+        print("(3) S列別複勝率：判定できる行なし")
+    ov = [0, 0]
+    for p in preds:
+        if "上書き=" in (p.get("notes") or "") and to_f(p.get("finish_pos")) is not None:
+            ov[0] += 1
+            ov[1] += to_f(p["finish_pos"]) <= 3
+    print(f"(4) LLM 上書きのある馬：n={ov[0]} 複勝{ov[1]}" if ov[0] else "(4) 上書き= タグのある行なし")
+    t2 = defaultdict(lambda: [0, 0])
+    for p in preds:
+        ad = to_f(p.get("agari_diff"))
+        if ad is None or to_f(p.get("finish_pos")) is None:
+            continue
+        k = "裏付けあり(≦0.3秒)" if ad <= 0.3 else "裏付けなし"
+        t2[k][0] += 1
+        t2[k][1] += to_f(p["finish_pos"]) <= 3
+    if t2:
+        print("(5) 末脚指数： " + " ".join(f"{k} {h}/{n}({h / n * 100:.0f}%)" for k, (n, h) in t2.items()))
+    else:
+        print("(5) 末脚指数：agari_diff のある行なし")
+
+
 def main():
     preds = load("predictions.csv")
     bets = load("bets.csv")
@@ -335,6 +552,9 @@ def main():
         print("※ 恒常的にROI<100%の保全ルールは較正レビューの削減候補（判定はn=10レビューのみ・R19）")
     else:
         print("タグ付き行なし（2026-08-17以降、保全ルールが強制した追加買い目は別行＋保全=R##で記録する）")
+
+    section_ablation(preds, races)
+    section_sim_calibration(preds, races)
 
     print()
     print("=" * 60)
