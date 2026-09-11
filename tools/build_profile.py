@@ -45,7 +45,9 @@ TTL_RESULT = 365 * 24 * 3600
 JRA = ["札幌", "函館", "福島", "新潟", "東京", "中山", "中京", "京都", "阪神", "小倉"]
 LOCAL = ["大井", "川崎", "船橋", "浦和", "門別", "盛岡", "水沢", "金沢", "笠松", "名古屋",
          "園田", "姫路", "高知", "佐賀", "帯広", "ばんえい"]
-KYAKU = {"逃": "逃げ", "先": "先行", "差": "差し", "追": "追込", "自": "自在"}
+# netkeiba の「大」＝大逃げ（逃と同じ horse_race_type01 アイコン）。紫苑S2026 以降の
+# プロファイルと同じく主観=逃げとして数え、表示は（netkeiba表示=大逃げ）で残す。
+KYAKU = {"逃": "逃げ", "大": "逃げ", "先": "先行", "差": "差し", "追": "追込", "自": "自在"}
 
 
 # ---------- 取得・解析 ----------
@@ -199,7 +201,8 @@ def parse_rows(html):
         m = re.search(r'Horse05[^>]*>(.*?)</div>', row, re.S)
         h["trainer"] = _text(m.group(1)) if m else ""
         m = re.search(r'class="kyakusitu">(.*?)</span>\s*([^<]*)', row, re.S)
-        h["subj_style"] = KYAKU.get(_text(m.group(1)), _text(m.group(1))) if m else "未設定"
+        h["subj_raw"] = _text(m.group(1)) if m else ""
+        h["subj_style"] = KYAKU.get(h["subj_raw"], h["subj_raw"]) if m else "未設定"
         h["interval"] = _text(m.group(2)) if m else ""
         m = re.search(r'class="Barei">(.*?)</span>', row, re.S)
         h["sex_age"] = _text(m.group(1)) if m else ""
@@ -213,6 +216,7 @@ def parse_rows(html):
         h["last_body_weight"] = int(m.group(1)) if m else None
         cells = re.findall(r'<td class="Past[^"]*"[^>]*>(.*?)</td>', row, re.S)
         h["runs"] = [p for p in (parse_past(c) for c in cells) if p]
+        h["rest_cells"] = len(re.findall(r'<td class="Rest', row))  # 休養セルは5走表示の1枠を占める
         horses.append(h)
     return horses
 
@@ -331,6 +335,9 @@ def classify(h, today):
                 notes.append(f"休養{gap}日")
     except ValueError:
         pass
+    if len(h["runs"]) < 5:
+        notes.append(f"取得{len(h['runs'])}走（それ以前は未取得"
+                     + (f"・netkeiba休養セル{h['rest_cells']}枠" if h.get("rest_cells") else "") + "）")
     h["notes"] = notes
     # 馬場別・距離帯経験
     agg = {"良": [0, 0, 0, 0], "稍重": [0, 0, 0, 0], "重不": [0, 0, 0, 0]}
@@ -403,6 +410,10 @@ def render_md(today, horses, slug, agari_mode):
     L.append("")
     L.append(f"- 出走 {len(horses)} 頭／機械認定 {len(known)} 頭／未確定 {len(unk)} 頭"
              + ("：" + "、".join(f"#{h['no'] or h['row']} {h['name']}（取得{h['n_runs_r']}走）" for h in unk) if unk else ""))
+    short = [h for h in horses if len(h["runs"]) < 5]
+    if short:
+        L.append("- 近5走の取得が5走未満（未取得の走は推測で埋めない）：" + "、".join(
+            f"#{h['no'] or h['row']} {h['name']}（{len(h['runs'])}走{'・休養セル' + str(h['rest_cells']) if h.get('rest_cells') else ''}）" for h in short))
     L.append(f"- `脚質不一致={len(mism)}/{len(known)}`（主観＝netkeiba 表示。未確定・自在・未設定は分母に含めない）"
              + ("：" + "、".join(f"#{h['no'] or h['row']} 機械{h['style']}/主観{h['subj_style']}" for h in mism) if mism else ""))
     L.append(f"- 逃げ認定 {len(nige)} 頭"
@@ -434,7 +445,8 @@ def render_md(today, horses, slug, agari_mode):
         L.append(f"#{no} {h['name']}｜4角r {rl} r_med={h['r_med'] if h['r_med'] is not None else '不明'} IQR={h['iqr'] if h['iqr'] is not None else '不明'}")
         mk = "機械=未確定（取得%d走）" % h["n_runs_r"] if h["style"] == "未確定" else f"機械={h['style']}{'（自在）' if h['jizai'] else ''}"
         agree = "" if h["style"] == "未確定" or h["subj_style"] in ("未設定", "自在") else ("／ 一致" if h["subj_style"] == h["style"] else "／ ★不一致")
-        L.append(f"　　単独ハナ {h['hana_count']}/5 → {mk} ／ 主観={h['subj_style']} {agree}")
+        raw = "（netkeiba表示=大逃げ）" if h.get("subj_raw") == "大" else ""
+        L.append(f"　　単独ハナ {h['hana_count']}/5 → {mk} ／ 主観={h['subj_style']} {agree}{raw}")
         L.append(f"　　5走距離帯={fmt_runs_tag(h)}")
         L.append(f"　　父={h['sire'] or '取得失敗'} ／ 母父={h['bms'] or '取得失敗'} ／ 斤量={h['weight_carried'] if h['weight_carried'] is not None else '取得失敗'} ／ 騎手={h['jockey']}（{h['jockey_change']}）")
         a = h["going_agg"]
