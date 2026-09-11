@@ -4,7 +4,7 @@
 
 設計方針（bot判定を「回避」するのではなく「bot扱いされない振る舞い」をする）:
   1. キャッシュ最優先。TTL内の同一URLはネットワークに出ない
-  2. ホスト単位の最小アクセス間隔（既定8秒＋ジッタ）と1日あたり上限（既定60回）
+  2. ホスト単位の最小アクセス間隔（既定8秒＋ジッタ）と1日あたり上限（既定60回）。netkeiba は HOST_OVERRIDES で 0.5秒・600回
   3. robots.txt を遵守。Disallow なら取得しない
   4. 連絡先入りの正直な User-Agent
   5. 429/503 は Retry-After を遵守して指数バックオフ（最大3回）
@@ -50,6 +50,20 @@ USER_AGENT = (
 MIN_INTERVAL = 8.0          # 同一ホストへの最小間隔（秒）
 JITTER = (1.0, 3.0)         # 間隔に加えるゆらぎ
 DAILY_HOST_LIMIT = 60       # 同一ホスト1日あたりの実リクエスト上限
+
+# ホスト別の上書き（2026-09-11・ユーザー判断）。build_profile.py の一括取得用に
+# netkeiba だけ間隔 0.5 秒・1日上限 600 回に緩める。他ホストは既定のまま。
+# 429/503 の Retry-After 遵守・robots.txt 遵守・キャッシュ最優先は変えない。
+HOST_OVERRIDES = {
+    "db.netkeiba.com":   {"interval": 0.5, "jitter": (0.0, 0.3), "daily": 600},
+    "race.netkeiba.com": {"interval": 0.5, "jitter": (0.0, 0.3), "daily": 600},
+}
+
+
+def _limits(host):
+    o = HOST_OVERRIDES.get(host, {})
+    return (o.get("interval", MIN_INTERVAL), o.get("jitter", JITTER),
+            o.get("daily", DAILY_HOST_LIMIT))
 MIN_TTL = 300               # これ未満のTTLは受け付けない（オッズ連打防止）
 MAX_RETRY = 3
 TIMEOUT = 30
@@ -90,11 +104,12 @@ def _throttle(host):
     today = time.strftime("%Y-%m-%d")
     if h.get("day") != today:
         h = {"day": today, "count": 0, "last": 0.0}
-    if h["count"] >= DAILY_HOST_LIMIT:
-        print(f"[STOP] {host}: 本日の上限 {DAILY_HOST_LIMIT} 回に到達。"
+    interval, jitter, daily = _limits(host)
+    if h["count"] >= daily:
+        print(f"[STOP] {host}: 本日の上限 {daily} 回に到達。"
               "キャッシュを使うか明日以降に。", file=sys.stderr)
         return False
-    wait = h["last"] + MIN_INTERVAL + random.uniform(*JITTER) - time.time()
+    wait = h["last"] + interval + random.uniform(*jitter) - time.time()
     if wait > 0:
         print(f"[wait] {host} へ {wait:.1f}s 待機（負荷防止）", file=sys.stderr)
         time.sleep(wait)

@@ -9,7 +9,7 @@ rules_master の買い目系ルールのうち、bets.structure と predictions 
   R24  妙味閾値到達馬（荒帯域4以上・他5以上）の紐は全券種で統一
   R31  軸抜けで全券種が同時失効する構成の検出（軸選定理由 or 併設券種を要求）
   R32  券種間の紐リスト突合（欠落には 欠落理由= の記録を要求）
-  R35  R<4.0 の☆は全券種の3着紐に保全（＋predictions.notes にR35根拠）
+  R35  R<4.0 の☆は全券種の3着紐に保全（＋predictions.notes にR35根拠）。欠落理由= があれば WARN 止まり（2026-09-11）
   R36  final上位2頭の直積を持つ券種が1つ以上あること
   R37  軸を含まない紐同士のペアが全券種合計2点以上（＋軸と人気同層に固めない）
 
@@ -192,8 +192,10 @@ def main():
                 continue
             everywhere = all(no in s for s in sets.values()) if sets else False
             tagged = "R35" in (p.get("notes") or "")
-            report(everywhere and tagged, "R35",
-                   f"☆#{no}（R={rv:g}<4.0）全券種保全={'○' if everywhere else '×'}・妙味根拠タグ={'○' if tagged else '×'}")
+            ok35 = everywhere and tagged
+            report(True if ok35 else (None if has_reason else False), "R35",
+                   f"☆#{no}（R={rv:g}<4.0）全券種保全={'○' if everywhere else '×'}・妙味根拠タグ={'○' if tagged else '×'}"
+                   + ("" if ok35 else ("（欠落理由あり→WARN止まり）" if has_reason else "")))
 
         # --- R36: final上位2頭の直積 ---
         top2 = [h for h, _ in sorted(final.items(), key=lambda kv: -(kv[1] or 0))[:2]]

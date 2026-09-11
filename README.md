@@ -45,6 +45,8 @@ keiba/
 ├── tools/                     ← 実行系ツール
 │   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
 │   ├── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
+│   ├── build_profile.py       … 出走馬プロファイルの一括生成（netkeiba 5走表示→脚質機械認定＋末脚指数。当日オッズ・人気は載せない）
+│   ├── jra_result.py          … JRA公式の結果取得（振り返りV0の一次ソース）
 │   └── patch_radj.py          … r_adj遡及記入の一回限りパッチ（適用済み。削除してよい）
 ├── cache/                     ← polite_fetch のキャッシュ・状態（実行時に生成。コミットしない）
 └── log/                       ← 検証ログ（詳細は log/README.md）
@@ -162,7 +164,15 @@ python3 log/calibrate.py            # 個別実行（複勝確率の較正・Bri
 python3 tools/polite_fetch.py <URL> [--ttl 秒] [--out file] [--data "cname=..."]
 ```
 
-キャッシュ最優先（TTL内は実アクセスなし）・ホスト単位の最小間隔8秒＋1日60回上限・robots.txt遵守・429/503はRetry-After遵守。**403等の取得拒否は回避せず撤退**し、動作実績のある代替ソース（Yahoo競馬denma / netkeiba / 競馬ラボ）へ切り替える方針。`--data` はPOST遷移用（JRA公式の `/JRADB/*.html` はサイト本来の正規遷移がPOST。bot判定の回避ではない）。ローカル/Claude Code専用（Claude.aiの実行環境は外部サイトへ出られないため、Claude.ai内の取得は従来どおりweb検索）。
+キャッシュ最優先（TTL内は実アクセスなし）・ホスト単位の最小間隔8秒＋1日60回上限（netkeiba のみ `HOST_OVERRIDES` で0.5秒・600回。2026-09-11）・robots.txt遵守・429/503はRetry-After遵守。**403等の取得拒否は回避せず撤退**し、動作実績のある代替ソース（Yahoo競馬denma / netkeiba / 競馬ラボ）へ切り替える方針。`--data` はPOST遷移用（JRA公式の `/JRADB/*.html` はサイト本来の正規遷移がPOST。bot判定の回避ではない）。ローカル/Claude Code専用（Claude.aiの実行環境は外部サイトへ出られないため、Claude.ai内の取得は従来どおりweb検索）。
+
+#### 出走馬プロファイル（`#収録` 種別:出走馬プロファイル・2026-09-11〜）
+
+```bash
+python3 tools/build_profile.py --netkeiba-id 202609040311 --slug 2026_challenge_cup --name チャレンジカップ
+```
+
+netkeiba の「出馬表・5走表示」1ページと近5走のレースページから、全頭の近5走（通過順・上がり・距離・馬場・着順・格・斤量・騎手）と父・母父を取り、『脚質認定ルール.md』§2〜§5 と末脚指数（ロードマップ v2 §5-2）を機械計算して `references/脚質認定_<日付>_<レース名>.md`（§6書式）と `cache/profile/<slug>.json` を出す。必須列が欠けたら生成せず「取得失敗」で止まる。**当日オッズ・当日人気は取得も出力もしない**（ブラインド評価）。枠順確定前は仮番で出し、確定後に再実行して差し替える。LLM の仕事は生成物の差分レビューと主観分類の確認だけ。
 
 #### レース結果（JRA公式・一次ソース）
 
