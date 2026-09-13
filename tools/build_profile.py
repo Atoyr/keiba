@@ -189,9 +189,12 @@ def parse_rows(html):
         h["no"] = int(_text(tds[1])) if len(tds) > 1 and _text(tds[1]).isdigit() else None
         m = re.search(r'Horse01[^>]*>(.*?)</div>', row, re.S)
         h["sire"] = _text(m.group(1)) if m else ""
-        m = re.search(r'db\.netkeiba\.com/horse/(\d+)[^>]*>\s*([^<]+?)\s*</a>', row)
+        # 馬名セル(Horse02)に限定する。行全体を探すと、馬記号アイコン(<span>)入りの馬名リンクを
+        # 読み飛ばして5走セル内の他馬リンク(着差の相手)を拾い、馬名とhorse_idが別馬になる
+        m = re.search(r'Horse02[^>]*>(.*?)</div>', row, re.S)
+        m = re.search(r'db\.netkeiba\.com/horse/(\d+)[^>]*>(.*?)</a>', m.group(1), re.S) if m else None
         h["horse_id"] = m.group(1) if m else None
-        h["name"] = m.group(2).strip() if m else ""
+        h["name"] = _text(m.group(2)) if m else ""
         if not h["horse_id"]:
             continue  # 馬名リンクの無い行（除外・取消・空行）は対象外
         m = re.search(r'Horse03[^>]*>(.*?)</div>', row, re.S)
