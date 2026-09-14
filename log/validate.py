@@ -59,6 +59,13 @@ RUN5_FIELDS = 4
 R25_GRADES = ("G1", "G2", "G3")
 R25_AUDITED_TAG = "R25精査="  # 発火対象に対する精査記録のマーカー
 
+# 過去走の単勝1倍台タグ（A-5・仮説32・2026-09-15）。記録専用で、振り返りV6に
+# tools/tag_odds1x.py が機械的に付ける（予想工程には出さない＝ブラインド評価）。
+# 手で転記する運用にすると 5走距離帯= と同じく記入されない（187行中0件）ため、
+# 結果確定済みのレースでタグの欠落・書式崩れを WARN で拾う。起点のセントライト記念2026から適用
+ODDS1X_FROM = "2026-09-13"
+ODDS1X_RE = re.compile(r"1倍台=(自身\d+;先着\d+;未取得\d+;走数\d+|取得失敗)(?=\s|$)")
+
 
 def parse_run5(bb):
     """`5走距離帯=` の値を [(距離, 馬場, 着順, 格)] に。要素数が違うものは None を混ぜて返す。"""
@@ -397,6 +404,17 @@ def main():
                             warn(f"{tagname}: R25発火対象（base {bs:g} < 70 かつ近5走に重賞4着以内）"
                                  f"だが精査記録がない（`{R25_AUDITED_TAG}` に5走精査の結論と"
                                  "根拠2走以上を書く。中京記念2026の2着⑤を取り逃した経路）")
+
+            # --- A-5: 過去走の単勝1倍台タグ（仮説32・記録専用・結果確定後に付与）---
+            race = race_by_id[rid]
+            if (race.get("date") or "") >= ODDS1X_FROM and (race.get("result_1st") or "").strip():
+                bb = p.get("base_breakdown") or ""
+                if "1倍台=" not in bb:
+                    warn(f"{tagname}: base_breakdown に 1倍台= タグがない"
+                         f"（振り返りV6で python3 tools/tag_odds1x.py --slug {rid} を実行する・仮説32）")
+                elif not ODDS1X_RE.search(bb):
+                    warn(f"{tagname}: 1倍台= の書式が崩れている"
+                         "（自身n;先着n;未取得n;走数n または 取得失敗。tools/tag_odds1x.py で付け直す）")
 
     # 印の頭数制約（R15）と全頭記録（記録原則5）
     for rid, rows in preds_by_race.items():

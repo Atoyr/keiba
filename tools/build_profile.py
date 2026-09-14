@@ -10,6 +10,9 @@ netkeiba の「出馬表・5走表示」1ページから全頭の近5走（通�
   cache/profile/<slug>.json                 … mark.py / reflect_prep.py の入力
 
 を書き出す。**当日オッズ・当日人気は取得も出力もしない**（ブラインド評価・v2 §4-3 判断6）。
+過去走の結果ページから数える「単勝1倍台」の走数（仮説32・記録専用）は JSON の `odds1x` にだけ保存し、
+md には出さない（過去の単勝オッズも市場の評価なので、評価前に見せない）。predictions.csv への付与は
+振り返りV6で tools/tag_odds1x.py が行う。
 
 使い方:
   python3 tools/build_profile.py --netkeiba-id 202609040311 --slug 2026_challenge_cup --name チャレンジカップ
@@ -247,6 +250,59 @@ def parse_race_agari(html):
         if m and re.match(r"^\d\d\.\d$", v):
             out[m.group(1)] = float(v)
     return out
+
+
+ODDS1X = 2.0  # 単勝1倍台＝2.0倍未満（仮説32）
+
+
+def parse_race_odds(html):
+    """db.netkeiba.com/race/<id> の結果表 → {horse_id: (着順, 単勝オッズ)}。着順が数字でない馬（除外・中止）は 99"""
+    i = html.find("race_table_01")
+    if i < 0:
+        return {}
+    seg = html[i:]
+    seg = seg[:seg.find("</table>")]
+    ths = [_text(x).replace(" ", "") for x in re.findall(r"<th[^>]*>(.*?)</th>", seg, re.S)]
+    try:
+        fin_idx, odds_idx = ths.index("着順"), ths.index("単勝")
+    except ValueError:
+        return {}
+    out = {}
+    for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", seg, re.S)[1:]:
+        tr = re.sub(r"</?diary_snap_cut>", "", tr)
+        tds = re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)
+        m = re.search(r"/horse/(\d+)", tr)
+        if not m or len(tds) <= max(fin_idx, odds_idx):
+            continue
+        f, o = _text(tds[fin_idx]), _text(tds[odds_idx])
+        out[m.group(1)] = (int(f) if f.isdigit() else 99,
+                           float(o) if re.match(r"^\d+(\.\d+)?$", o) else None)
+    return out
+
+
+def odds1x_counts(h, tables):
+    """近5走の単勝1倍台（仮説32・記録専用）。tables={race_id: parse_race_odds の戻り値}。
+    self＝自身が1倍台だった走数／beat＝1倍台の他馬に先着した走数／miss＝結果表に自馬が無い走数（地方・海外・取得失敗）"""
+    c = {"self": 0, "beat": 0, "miss": 0, "runs": len(h.get("runs", []))}
+    for r in h.get("runs", []):
+        t = tables.get(r.get("race_id")) or {}
+        me = t.get(h.get("horse_id"))
+        if not me:
+            c["miss"] += 1
+            continue
+        if me[1] is not None and me[1] < ODDS1X:
+            c["self"] += 1
+        if any(hid != h.get("horse_id") and o is not None and o < ODDS1X and me[0] < f
+               for hid, (f, o) in t.items()):
+            c["beat"] += 1
+    return c
+
+
+def odds1x_tag(c):
+    """predictions.csv の base_breakdown に付ける値（`1倍台=` の右辺）"""
+    if not c:
+        return "取得失敗"
+    return f"自身{c['self']};先着{c['beat']};未取得{c['miss']};走数{c['runs']}"
 
 
 # ---------- 脚質認定 §2〜§5 ----------
@@ -509,16 +565,21 @@ def main():
                     continue
                 if rid not in seen:
                     try:
-                        seen[rid] = parse_race_agari(fetch_html(f"https://db.netkeiba.com/race/{rid}/", TTL_RESULT, a.force))
+                        page = fetch_html(f"https://db.netkeiba.com/race/{rid}/", TTL_RESULT, a.force)
+                        seen[rid] = (parse_race_agari(page), parse_race_odds(page))
                     except Exception as e:  # 取得失敗はそのまま記録
                         print(f"[取得失敗] race {rid}: {e}", file=sys.stderr)
-                        seen[rid] = {}
-                table = seen[rid]
+                        seen[rid] = ({}, {})
+                table = seen[rid][0]
                 if table:
                     vals = sorted(table.values())
                     r["best_agari"] = vals[0]
                     mine = table.get(h["horse_id"])
                     r["agari_rank"] = (vals.index(mine) + 1) if mine is not None else None
+        # 単勝1倍台の走数（仮説32・記録専用）。JSON にだけ残し md には出さない
+        odds_tables = {rid: v[1] for rid, v in seen.items()}
+        for h in horses:
+            h["odds1x"] = odds1x_counts(h, odds_tables)
 
     for h in horses:
         classify(h, today)

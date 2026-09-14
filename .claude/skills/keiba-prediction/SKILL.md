@@ -31,7 +31,7 @@ Claude.aiプロジェクト運用との違いはログの書き込み方だけ�
   リポジトリ外から最新mainを取りに行く場合のみ `KEIBA_LOCAL` を外す）。個別実行は
   `python3 log/validate.py` / `python3 log/gate.py` / `python3 log/analyze.py` / `python3 log/backtest.py` / `python3 log/calibrate.py`
 - 予想・振り返り・集計・ルール相談の開始時は、依頼がなくても最新mainを取得して validate と指示正本の同期チェックを先に実行する（指示「自動トリガー」節に従う）
-- **出走馬プロファイルは `python3 tools/build_profile.py --netkeiba-id <12桁> --slug <race_id> --name <レース名>` で生成する**（2026-09-11〜）。全頭の近5走・父母父・斤量・騎手・脚質機械認定・末脚指数を1回で出す。LLM は生成物の差分レビュー（未確定馬・ハナ争い・不一致）と主観分類の確認だけを行い、馬1頭ずつ取得しない。必須列が欠けて止まったら「取得失敗」として報告する
+- **出走馬プロファイルは `python3 tools/build_profile.py --netkeiba-id <12桁> --slug <race_id> --name <レース名>` で生成する**（2026-09-11〜）。全頭の近5走・父母父・斤量・騎手・脚質機械認定・末脚指数を1回で出す。LLM は生成物の差分レビュー（未確定馬・ハナ争い・不一致）と主観分類の確認だけを行い、馬1頭ずつ取得しない。必須列が欠けて止まったら「取得失敗」として報告する。過去走の単勝1倍台の走数は JSON にだけ保存して md には出さない（ブラインド評価）。**振り返りV6で `python3 tools/tag_odds1x.py --slug <race_id>` を実行し、`base_breakdown` に `1倍台=` を付ける**（仮説32・記録専用・2026-09-15〜）
 - **印 v4 の paper 並走（2026-09-12〜）**：`python3 log/mark.py --slug <race_id> --template` で全頭シミュレーション表の雛形を出し、LLM は base・勝ち筋・崩れ筋・sim_score・加算4項・妙味・tags だけを埋める（**オッズ・人気を見ずに埋める**。根拠欄に人気・オッズ由来の語があると G-O で止まる）。`python3 log/mark.py --slug <race_id>` の ERROR が 0 になるまで表を直し、`--write` で predictions.csv に反映してから validate・gate を回す。並走中の正は従来工程で、v4 は比較記録（README「印 v4 の paper 並走」）
 - **レース結果（着順・配当・ハロンタイム・コーナー通過順・発表馬場）は `python3 tools/jra_result.py --date <YYYY-MM-DD> --course <場> --race <R>` で取る**。JRA公式の一次ソースで、振り返りV0はこれで確定する。`going` を確定したら `races.notes` に `馬場ソース=` を残す（欠けると validate.py がWARN）。含水率・クッション値は結果ページに無いので取れなければ「取得失敗」
 - オッズ・出馬表など他の取得は `python3 tools/polite_fetch.py <URL> [--data "cname=..."]` を優先する（キャッシュ・ホスト別レート制限・robots遵守つき。生のWebFetch連打をしない）。**403等の取得拒否は回避せず**、Yahoo競馬denma / netkeiba へ切り替える。取得元の優先順位と失敗時の扱いは `プロジェクト指示_v3.md` に従う

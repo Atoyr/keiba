@@ -46,6 +46,7 @@ keiba/
 │   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
 │   ├── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
 │   ├── build_profile.py       … 出走馬プロファイルの一括生成（netkeiba 5走表示→脚質機械認定＋末脚指数。当日オッズ・人気は載せない）
+│   ├── tag_odds1x.py          … predictions.csv に過去走の単勝1倍台タグを付与（振り返りV6・仮説32・記録専用）
 │   ├── jra_result.py          … JRA公式の結果取得（振り返りV0の一次ソース）
 │   └── patch_radj.py          … r_adj遡及記入の一回限りパッチ（適用済み。削除してよい）
 ├── cache/                     ← polite_fetch のキャッシュ・状態（実行時に生成。コミットしない）
@@ -174,6 +175,7 @@ python3 tools/build_profile.py --netkeiba-id 202609040311 --slug 2026_challenge_
 ```
 
 netkeiba の「出馬表・5走表示」1ページと近5走のレースページから、全頭の近5走（通過順・上がり・距離・馬場・着順・格・斤量・騎手）と父・母父を取り、『脚質認定ルール.md』§2〜§5 と末脚指数（ロードマップ v2 §5-2）を機械計算して `references/脚質認定_<日付>_<レース名>.md`（§6書式）と `cache/profile/<slug>.json` を出す。必須列が欠けたら生成せず「取得失敗」で止まる。**当日オッズ・当日人気は取得も出力もしない**（ブラインド評価）。枠順確定前は仮番で出し、確定後に再実行して差し替える。LLM の仕事は生成物の差分レビューと主観分類の確認だけ。
+過去走の単勝1倍台の走数（仮説32・記録専用）は JSON にだけ保存し md には出さない。振り返りV6で `python3 tools/tag_odds1x.py --slug <race_id>` が `predictions.csv` の `base_breakdown` に `1倍台=` を付ける。
 
 #### 印 v4 の paper 並走（`log/mark.py`・2026-09-12〜・ロードマップ v2 §5-3）
 

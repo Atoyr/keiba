@@ -403,6 +403,44 @@ def main():
 
     print()
     print("=" * 60)
+    print("■ 過去走の単勝1倍台（仮説32・群2・記録専用）")
+    print("=" * 60)
+    # 「過去に単勝1倍台だった馬」「1倍台の馬に先着した馬」は強いかを、当日人気帯を揃えて比べる。
+    # 過去の単勝オッズも市場の評価なので、人気帯を揃えずに比べると当日人気を学び直すだけになる。
+    # タグは振り返りV6で tools/tag_odds1x.py が付ける（予想工程では使わない）。
+    # 起点のセントライト記念2026は R17 により判定サンプルから除く。
+    origin32 = "2026_st_lite_kinen"
+    pat32 = re.compile(r"1倍台=自身(\d+);先着(\d+);未取得(\d+);走数(\d+)")
+    rows32, skipped32 = [], 0
+    for p in preds:
+        m = pat32.search(p.get("base_breakdown") or "")
+        pop = to_f(p.get("popularity"))
+        if not m or to_f(p.get("finish_pos")) is None or pop is None:
+            continue
+        if p["race_id"] == origin32 or int(m.group(3)) >= int(m.group(4)):
+            skipped32 += 1  # 起点レース（R17）／全走が未取得で判定材料なし
+            continue
+        rows32.append((int(m.group(1)), int(m.group(2)), pop, p.get("in_place") == "1"))
+    if not rows32:
+        print(f"判定対象の行なし（起点除外・全走未取得の除外 {skipped32} 頭）。"
+              "振り返りV6で tools/tag_odds1x.py を実行すると以後のレースが積み上がる")
+    else:
+        print(f"対象 {len(rows32)} 頭（起点除外・全走未取得の除外 {skipped32} 頭。人気は predictions.popularity＝予想時オッズ）")
+        groups32 = [("自身1倍台あり", lambda s, b: s >= 1), ("1倍台に先着あり", lambda s, b: b >= 1),
+                    ("どちらも非該当", lambda s, b: s == 0 and b == 0)]
+        bands32 = [("全体", lambda x: True), ("1〜3番人気", lambda x: x <= 3),
+                   ("4〜6番人気", lambda x: 4 <= x <= 6), ("7番人気以下", lambda x: x >= 7)]
+        for blab, bf in bands32:
+            cells = []
+            for glab, gf in groups32:
+                g = [r for r in rows32 if bf(r[2]) and gf(r[0], r[1])]
+                hit = sum(1 for r in g if r[3])
+                cells.append(f"{glab} {hit}/{len(g)}" + (f"({hit / len(g) * 100:.0f}%)" if g else ""))
+            print(f"  {blab:<8} " + " ｜ ".join(cells))
+        print("  ※判定は人気帯の中での比較で行う（全体の差は当日人気の言い換えを含む）")
+
+    print()
+    print("=" * 60)
     print("■ R値帯別 複勝率")
     print("=" * 60)
     bands = [("R>=4.0", lambda r: r >= 4.0), ("3.0-4.0", lambda r: 3.0 <= r < 4.0),
