@@ -329,6 +329,51 @@ def quartiles(v):
     return q(0.25), q(0.75)
 
 
+def _run_kind_differs(r, today):
+    """R44 の『種別の異なる走』判定。障害・地方/海外・今回と異なる馬場種別を対象にする。"""
+    sf = r.get("surface")
+    if sf and sf not in ("芝", "ダ"):
+        return "障害"
+    if r.get("place") not in JRA:
+        return "地方/海外"
+    if sf and today.get("surface") and sf != today["surface"]:
+        return f"{sf}走"
+    return None
+
+
+def _excl_recalc(h, today):
+    """種別の異なる走を除いた r_med と区分を返す。対象走が無い／残り3走未満なら None。"""
+    kinds, keep = [], []
+    for r in h["runs"]:
+        if r.get("r") is None:
+            continue
+        k = _run_kind_differs(r, today)
+        if k:
+            kinds.append(k)
+        else:
+            keep.append(r["r"])
+    if not kinds:
+        return None
+    if len(keep) < 3:
+        return {"kinds": sorted(set(kinds)), "n": len(keep), "r_med": None,
+                "style": None, "changed": None, "note": "除外後3走未満のため区分を出さない"}
+    med = statistics.median(keep)
+    hana = sum(1 for r in h["runs"]
+               if r.get("r") is not None and not _run_kind_differs(r, today) and r.get("hana"))
+    recent3 = sum(1 for r in h["runs"][:3]
+                  if r.get("r") is not None and not _run_kind_differs(r, today) and r.get("hana"))
+    if (hana >= 2 or recent3 >= 1) and med <= 0.15:
+        st = "逃げ"
+    elif med <= 0.35:
+        st = "先行"
+    elif med <= 0.70:
+        st = "差し"
+    else:
+        st = "追込"
+    return {"kinds": sorted(set(kinds)), "n": len(keep), "r_med": round(med, 3),
+            "style": st, "changed": st != h["style"], "note": None}
+
+
 def classify(h, today):
     rs, hana, recent3_hana = [], 0, 0
     for i, r in enumerate(h["runs"]):
@@ -365,6 +410,12 @@ def classify(h, today):
         h["style"] = st
         h["jizai"] = h["iqr"] >= 0.30
     h["hana_rate"] = round(hana / 5, 2)
+    # R44（2026-09-20 暫定）：4角1番手（r=0.00）の走数。
+    # §3 の逃げ判定（単独ハナ＝1角基準）は変更せず、R39 へ渡す候補集合を広げるためだけに使う。
+    h["c4_lead_count"] = sum(1 for x in rs if x == 0.0)
+    # R44：障害・地方・海外・異種別馬場など「種別の異なる走」を除外した r_med と区分を併記する。
+    # §4 の「原則として走を除外しない」は維持し、本体の r_med / style は元のまま。
+    h["excl"] = _excl_recalc(h, today)
     n = today.get("field_size") or 0
     h["sim_pos"] = round(h["r_med"] * (n - 1) + 1, 1) if h["r_med"] is not None and n else None
     # 注記（§4：除外しない・注記のみ）
@@ -443,6 +494,26 @@ def fmt_runs_tag(h):
     return ";".join(parts) if parts else "なし"
 
 
+def fmt_time_tag(h):
+    """近走順の `時計/上がり順位/頭数/着差` を `;` 区切りで返す。
+
+    区切りが `:` でなく `/` なのは、時計そのものが `1:59.8` の形で `:` を含むため。
+    `5走距離帯=` と同じく要素数は常に4つで、取れない項は `不明`（推測で埋めない）。
+    着差は netkeiba の着差欄と同符号で、勝ち馬は2着との差が負値で入る。
+    """
+    parts = []
+    for r in h["runs"]:
+        t = r.get("time") or "不明"
+        ar = r.get("agari_rank")
+        ar = f"{ar}位" if ar is not None else "不明"
+        fd = r.get("field")
+        fd = f"{fd}頭" if fd else "不明"
+        m = re.search(r"\(([-+]?[\d.]+)\)", r.get("margin_ref") or "")
+        mg = m.group(1) if m else "不明"
+        parts.append(f"{t}/{ar}/{fd}/{mg}")
+    return ";".join(parts) if parts else "なし"
+
+
 def render_md(today, horses, slug, agari_mode):
     L = []
     L.append(f"# 出走馬プロファイル {today['date']} {today['race_name']}（{today.get('course')} {today.get('surface')}{today.get('distance')}m・{'ハンデ' if today.get('handicap') else '別定/馬齢'}）")
@@ -505,13 +576,21 @@ def render_md(today, horses, slug, agari_mode):
         mk = "機械=未確定（取得%d走）" % h["n_runs_r"] if h["style"] == "未確定" else f"機械={h['style']}{'（自在）' if h['jizai'] else ''}"
         agree = "" if h["style"] == "未確定" or h["subj_style"] in ("未設定", "自在") else ("／ 一致" if h["subj_style"] == h["style"] else "／ ★不一致")
         raw = "（netkeiba表示=大逃げ）" if h.get("subj_raw") == "大" else ""
-        L.append(f"　　単独ハナ {h['hana_count']}/5 → {mk} ／ 主観={h['subj_style']} {agree}{raw}")
+        L.append(f"　　単独ハナ {h['hana_count']}/5 ／ 4角1番手 {h['c4_lead_count']}/5 → {mk} ／ 主観={h['subj_style']} {agree}{raw}")
+        ex = h.get("excl")
+        if ex:
+            if ex["r_med"] is None:
+                L.append(f"　　除外後（{'・'.join(ex['kinds'])}を除く）=残り{ex['n']}走・{ex['note']}（R44）")
+            else:
+                chg = "★区分が変わる → 工程4・工程5は除外後を使う" if ex["changed"] else "区分は変わらない"
+                L.append(f"　　除外後（{'・'.join(ex['kinds'])}を除く）=r_med {ex['r_med']}・{ex['style']}（残り{ex['n']}走）／ {chg}（R44）")
         L.append(f"　　5走距離帯={fmt_runs_tag(h)}")
         L.append(f"　　父={h['sire'] or '取得失敗'} ／ 母父={h['bms'] or '取得失敗'} ／ 斤量={h['weight_carried'] if h['weight_carried'] is not None else '取得失敗'} ／ 騎手={h['jockey']}（{h['jockey_change']}）")
         a = h["going_agg"]
         L.append(f"　　馬場別=良[{'-'.join(map(str, a['良']))}]・稍重[{'-'.join(map(str, a['稍重']))}]・重不[{'-'.join(map(str, a['重不']))}] ／ 当該距離帯経験={'あり' if h['dist_exp'] else 'なし'}")
         ad = f"{h['agari_diff_med']:.2f}秒（n={h['agari_n']}）" if h["agari_diff_med"] is not None else "取得失敗"
         L.append(f"　　末脚=上がり差中央値 {ad} ／ 上がり3位以内 {h['agari_top3']}/{len(h['runs'])} ／ {'裏付けあり' if h['agari_backed'] else '裏付けなし'} ／ 想定4角={h['sim_pos'] if h['sim_pos'] is not None else '不明'}")
+        L.append(f"　　5走時計={fmt_time_tag(h)}")
         L.append(f"　　性齢={h['sex_age']} ／ 前走馬体重={h['last_body_weight'] or '不明'} ／ 間隔={h['interval'] or '不明'}"
                  + (f" ／ 注記={'; '.join(h['notes'])}" if h["notes"] else ""))
         L.append("")
@@ -524,6 +603,16 @@ def render_md(today, horses, slug, agari_mode):
         L.append("- 未確定馬は逃げ・先行カウントに入れていない。「未確定馬が逃げた場合」を展開2パターンのどちらかに必ず含める（§5）")
     if nige and len(nige) == 1 and nige[0]["hana_rate"] >= 0.4:
         L.append(f"- 逃げ認定1頭×成功率≧0.4 → R04 の「単騎」宣言条件を形式的に満たす（良馬場要件は工程3で確認）")
+    c4 = [h for h in horses if h.get("c4_lead_count")]
+    if c4:
+        L.append("- **R44（2026-09-20 暫定）：4角1番手（r=0.00）が1走以上ある馬は、単独ハナ0でも R39 の主導権候補に含めて展開2パターンを並列化する。**"
+                 " 含めない場合は理由を1行記録する： "
+                 + "、".join(f"#{h['no']} {h['name']}（{h['c4_lead_count']}/5・機械={h['style']}）" for h in c4))
+    ex_any = [h for h in horses if h.get("excl")]
+    if ex_any:
+        L.append("- R44：種別の異なる走を含む馬は除外後の r_med / 区分を §1 に併記した。"
+                 "除外後に区分が変わる馬は工程4のペーススコアと工程5の隊列で除外後の区分を使う： "
+                 + "、".join(f"#{h['no']} {h['name']}（{'★変化' if h['excl'].get('changed') else '変化なし'}）" for h in ex_any))
     if len(nige) + len(hana_others) >= 2:
         L.append("- ハナ実績馬が2頭以上 → R39 の4項目（内外関係・必逃性・主張実績・先手後の競り込み）を工程5で記録する")
     L.append(f"- JSON：`cache/profile/{slug}.json`（mark.py・reflect_prep.py の入力）")
