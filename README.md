@@ -45,7 +45,7 @@ keiba/
 ├── tools/                     ← 実行系ツール
 │   ├── polite_fetch.py        … 負荷をかけない取得クライアント（ローカル/Claude Code専用）
 │   ├── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
-│   ├── build_profile.py       … 出走馬プロファイルの一括生成（netkeiba 5走表示→脚質機械認定＋末脚指数。当日オッズ・人気は載せない）
+│   ├── build_profile.py       … 出走馬プロファイルの一括生成（netkeiba 5走表示→脚質機械認定＋末脚指数＋5走時計。当日オッズ・人気は載せない）
 │   ├── tag_odds1x.py          … predictions.csv に過去走の単勝1倍台タグを付与（振り返りV6・仮説32・記録専用）
 │   ├── jra_result.py          … JRA公式の結果取得（振り返りV0の一次ソース）
 │   └── patch_radj.py          … r_adj遡及記入の一回限りパッチ（適用済み。削除してよい）

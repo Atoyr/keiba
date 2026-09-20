@@ -443,6 +443,26 @@ def fmt_runs_tag(h):
     return ";".join(parts) if parts else "なし"
 
 
+def fmt_time_tag(h):
+    """近走順の `時計/上がり順位/頭数/着差` を `;` 区切りで返す。
+
+    区切りが `:` でなく `/` なのは、時計そのものが `1:59.8` の形で `:` を含むため。
+    `5走距離帯=` と同じく要素数は常に4つで、取れない項は `不明`（推測で埋めない）。
+    着差は netkeiba の着差欄と同符号で、勝ち馬は2着との差が負値で入る。
+    """
+    parts = []
+    for r in h["runs"]:
+        t = r.get("time") or "不明"
+        ar = r.get("agari_rank")
+        ar = f"{ar}位" if ar is not None else "不明"
+        fd = r.get("field")
+        fd = f"{fd}頭" if fd else "不明"
+        m = re.search(r"\(([-+]?[\d.]+)\)", r.get("margin_ref") or "")
+        mg = m.group(1) if m else "不明"
+        parts.append(f"{t}/{ar}/{fd}/{mg}")
+    return ";".join(parts) if parts else "なし"
+
+
 def render_md(today, horses, slug, agari_mode):
     L = []
     L.append(f"# 出走馬プロファイル {today['date']} {today['race_name']}（{today.get('course')} {today.get('surface')}{today.get('distance')}m・{'ハンデ' if today.get('handicap') else '別定/馬齢'}）")
@@ -512,6 +532,7 @@ def render_md(today, horses, slug, agari_mode):
         L.append(f"　　馬場別=良[{'-'.join(map(str, a['良']))}]・稍重[{'-'.join(map(str, a['稍重']))}]・重不[{'-'.join(map(str, a['重不']))}] ／ 当該距離帯経験={'あり' if h['dist_exp'] else 'なし'}")
         ad = f"{h['agari_diff_med']:.2f}秒（n={h['agari_n']}）" if h["agari_diff_med"] is not None else "取得失敗"
         L.append(f"　　末脚=上がり差中央値 {ad} ／ 上がり3位以内 {h['agari_top3']}/{len(h['runs'])} ／ {'裏付けあり' if h['agari_backed'] else '裏付けなし'} ／ 想定4角={h['sim_pos'] if h['sim_pos'] is not None else '不明'}")
+        L.append(f"　　5走時計={fmt_time_tag(h)}")
         L.append(f"　　性齢={h['sex_age']} ／ 前走馬体重={h['last_body_weight'] or '不明'} ／ 間隔={h['interval'] or '不明'}"
                  + (f" ／ 注記={'; '.join(h['notes'])}" if h["notes"] else ""))
         L.append("")
