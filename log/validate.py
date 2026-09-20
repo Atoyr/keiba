@@ -66,6 +66,45 @@ R25_AUDITED_TAG = "R25精査="  # 発火対象に対する精査記録のマー�
 ODDS1X_FROM = "2026-09-13"
 ODDS1X_RE = re.compile(r"1倍台=(自身\d+;先着\d+;未取得\d+;走数\d+|取得失敗)(?=\s|$)")
 
+# --- 層2: `欠落理由=` の内容照合（2026-09-20 #設計・R40 `消し根拠=` 型へ統一） ---
+# gate.py の FAIL を容認するエスケープタグは「存在するか」しか見ておらず、
+# 書かれた内容が predictions.csv と整合するかは誰も照合していなかった（層1のみ）。
+# オールカマー2026の振り返りで、記録を強制するゲート（R24/R32/R35/R36/R37/R42/R45）が
+# 「記録した内容の正しさ」を保証しないことが論点になり、3層に整理した：
+#   層1 存在・書式          → 機械検証可能（従来ここだけ）
+#   層2 事実整合            → 機械検証可能（本ブロックで実装）
+#   層3 判断（cat）の妥当性 → 機械検証**不能**。cat を閉じた語彙にして
+#                             analyze.py のカテゴリ別3着内率で n レース後に測る
+# 遡及はしない：施行日より前の13行は自由文のまま（当時の分類の再構成＝捏造になる）。
+REASON_TAG_FROM = "2026-09-21"
+# cat の閉じた語彙。後ろ3つは R40 `消し根拠=` と同じ語（消しと欠落を同じ軸で集計するため）
+REASON_CATS = {
+    "妙味閾値未満", "紐頭数上限", "予算上限", "保全済",
+    "条件不適合", "展開不適合", "構造フィルタ", "記録不備",
+}
+# 1項目 = `#<馬番>[-<馬番>]:cat=<語彙>:<事実タグ…>:<自由文>`、項目は `;` 区切り
+REASON_ITEM_HEAD = re.compile(r"^\s*#\s*(\d{1,2})(?:\s*-\s*(\d{1,2}))?\s*:")
+REASON_CAT = re.compile(r"cat\s*[=＝]\s*([^:：;；\s]+)")
+# 事実タグ（任意・書いたら predictions.csv と一致すること＝ERROR）
+REASON_FACTS = (
+    ("妙味", re.compile(r"(?<![0-9A-Za-z])妙味\s*([0-9]+(?:\.[0-9]+)?)")),
+    ("final", re.compile(r"final\s*([0-9]{1,2})\s*位")),
+    ("本線", re.compile(r"本線\s*([ABCD])(?![A-Za-z])")),
+)
+
+
+def parse_reason_items(text):
+    """`欠落理由=` の値を項目リストへ。各項目は (馬番tuple, cat, 本文)。"""
+    out = []
+    for raw in re.split(r"[;；]", text or ""):
+        if not raw.strip():
+            continue
+        m = REASON_ITEM_HEAD.match(raw)
+        nos = tuple(int(g) for g in (m.group(1), m.group(2)) if g) if m else ()
+        c = REASON_CAT.search(raw)
+        out.append((nos, c.group(1) if c else None, raw.strip()))
+    return out
+
 
 def parse_run5(bb):
     """`5走距離帯=` の値を [(距離, 馬場, 着順, 格)] に。要素数が違うものは None を混ぜて返す。"""
@@ -205,6 +244,72 @@ def tag(text, key):
     """notes から `key=値` を取り出す。区切りは / ／ 空白 読点。無ければ None。"""
     m = re.search(key + r"\s*[=＝:：]\s*([^/／、,\s]+)", text or "")
     return m.group(1).strip() if m else None
+
+
+def tag_long(text, key):
+    """`key=値` を取り出す（値に空白・読点・`;` を含む長文タグ用）。区切りは ` / ` か `／`。"""
+    m = re.search(key + r"\s*[=＝]\s*(.*?)(?=\s/\s|／|$)", text or "", re.S)
+    return m.group(1).strip() if m else None
+
+
+def final_rank_map(prows):
+    """レース内 final_score 降順の順位（1始まり）。"""
+    usable = [p for p in prows if to_f(p.get("final_score")) is not None]
+    ordered = sorted(usable, key=lambda x: -to_f(x.get("final_score")))
+    return {(p.get("horse_no") or "").strip(): i + 1 for i, p in enumerate(ordered)}
+
+
+def check_reason_tags(rid, race_row, notes, rbets, prows):
+    """層2：`欠落理由=` に書かれた事実タグを predictions.csv と突合する。
+
+    - 書式・`cat=` の語彙違反は WARN（無記入そのものは gate.py の担当なのでここでは見ない）
+    - 事実タグ（妙味 / final<n>位 / 本線<A-D>）の値が実データと違えば **ERROR**
+      （記録原則10 と同じ思想＝誤った数値が確定値として集計へ入るのを止める）
+    """
+    date = (race_row.get("date") or "").strip()
+    if not date or date < REASON_TAG_FROM:
+        return                      # 遡及しない（施行日より前は自由文のまま）
+    blob = " / ".join([notes] + [(b.get("notes") or "") for b in rbets])
+    val = tag_long(blob, "欠落理由")
+    if val is None:
+        return
+    by_no = {(p.get("horse_no") or "").strip(): p for p in prows}
+    rank = final_rank_map(prows)
+    for nos, cat, body in parse_reason_items(val):
+        head = f"races.csv [{rid}] 欠落理由 «{body[:36]}»"
+        if not nos:
+            warn(f"{head}: 項目の先頭が #<馬番> か #<馬番>-<馬番> でない"
+                 "（書式は log/README.md 宣言タグ規約・項目は ; 区切り）")
+        if cat is None:
+            warn(f"{head}: cat= がない（閉じた語彙から選ぶ: {'/'.join(sorted(REASON_CATS))}）")
+        elif cat not in REASON_CATS:
+            warn(f"{head}: cat={cat} が閉じた語彙にない（{'/'.join(sorted(REASON_CATS))}）")
+        for no in nos:
+            if str(no) not in by_no:
+                warn(f"{head}: #{no} が predictions.csv [{rid}] に存在しない")
+        if len(nos) != 1:
+            continue                # ペア欠落は1頭の値に紐づかないので事実タグは照合しない
+        p = by_no.get(str(nos[0]))
+        if p is None:
+            continue
+        for name, pat in REASON_FACTS:
+            m = pat.search(body)
+            if not m:
+                continue            # 事実タグは任意。書かなければ何も言わない
+            claimed = m.group(1)
+            if name == "妙味":
+                a = to_f(p.get("myomi_score"))
+                if a is None or abs(a - float(claimed)) > 1e-9:
+                    err(f"{head}: 妙味{claimed} が #{nos[0]} の myomi_score={p.get('myomi_score') or '空欄'} と不一致")
+            elif name == "final":
+                a = rank.get(str(nos[0]))
+                if a != int(claimed):
+                    a_txt = f"{a}位" if a else "算出不能(final_score空欄)"
+                    err(f"{head}: final{claimed}位 が #{nos[0]} のレース内 final_score 順位 {a_txt} と不一致")
+            else:
+                a = (p.get("s_mid") or "").strip()
+                if a != claimed:
+                    err(f"{head}: 本線{claimed} が #{nos[0]} の s_mid={a or '空欄'} と不一致")
 
 
 def load(name):
@@ -569,6 +674,9 @@ def main():
             warn(f"races.csv [{rid}]: going={r.get('going')} が一次ソース未確認の疑い"
                  "（notesに取得失敗/ブロック等の記述あり）。"
                  "tools/jra_result.py で発表馬場を確認し notes に 馬場ソース= を付ける")
+
+        # (8) 層2: `欠落理由=` の内容照合（2026-09-20 #設計・REASON_TAG_FROM 以降）
+        check_reason_tags(rid, r, notes, rbets, preds_by_race.get(rid, []))
 
     # ---- rules_master ----
     rule_ids = set()
