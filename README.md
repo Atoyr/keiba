@@ -47,6 +47,7 @@ keiba/
 │   ├── claude_run.sh          … 集計ランナー（GitHub最新main取得→validate＋analyze＋backtest実行）
 │   ├── build_profile.py       … 出走馬プロファイルの一括生成（netkeiba 5走表示→脚質機械認定＋末脚指数＋5走時計。当日オッズ・人気は載せない）
 │   ├── tag_odds1x.py          … predictions.csv に過去走の単勝1倍台タグを付与（振り返りV6・仮説32・記録専用）
+│   ├── tag_profile.py         … predictions.csv にプロファイル事実タグ（機械脚質・距離帯経験・実距離経験）を付与（工程12・判断タグ照合の入力）
 │   ├── jra_result.py          … JRA公式の結果取得（振り返りV0の一次ソース）
 │   └── patch_radj.py          … r_adj遡及記入の一回限りパッチ（適用済み。削除してよい）
 ├── cache/                     ← polite_fetch のキャッシュ・状態（実行時に生成。コミットしない）
@@ -56,6 +57,7 @@ keiba/
     ├── rules_master.csv       … 失敗則台帳（R01〜。statusで現行/暫定/包含済を管理）
     ├── rule_fires.csv         … ルール発火・遵守の記録
     ├── validate.py            … CSVスキーマ検証（ERROR＝ゲートFAIL級を機械チェック）
+    ├── test_reason_tags.py / test_compliance.py … validate.py の回帰テスト（欠落理由= の層2／判断タグの事実照合 K3）
     ├── analyze.py             … 集計（実際に買った結果：印別成績・ベースライン比較・r_adj分離）
     ├── backtest.py            … 戦略リプレイ（同じログで別戦略なら：印別ベタ買い・頭◎vs◎○ほか）
     ├── calibrate.py           … 確率較正（モデル素点→複勝確率・市場を基準線に Brier で比較）
@@ -152,9 +154,9 @@ python3 log/calibrate.py            # 個別実行（複勝確率の較正・Bri
 ```
 
 - **validate.py**：ログCSVの機械検証。[ERROR]＝ゲートFAIL級（この状態で予想・買い目を確定しない）、[WARN]＝記録不備。claude_run.sh の先頭でも実行され、ERROR検出時は後続集計を参考値扱いにする（R22）
-  - スキーマ・数値ゲート・印の頭数（R15）・積み上げ検算・点数×単価（R16）に加え、**宣言と実装の突合**を行う：①荒れ度帯域と券種構成・堅実穴比の宣言タグ整合、②計画総額と実購入額の乖離（券種欠落の検出）、③rule_fires の `as_of=` と確定馬場の鮮度、④**`欠落理由=` に書かれた事実タグ（妙味・final順位・本線）と predictions.csv の突合**（2026-09-21 以降・不一致は ERROR。回帰テストは `log/test_reason_tags.py`）。タグ書式は `log/README.md` が正本
+  - スキーマ・数値ゲート・印の頭数（R15）・積み上げ検算・点数×単価（R16）に加え、**宣言と実装の突合**を行う：①荒れ度帯域と券種構成・堅実穴比の宣言タグ整合、②計画総額と実購入額の乖離（券種欠落の検出）、③rule_fires の `as_of=` と確定馬場の鮮度、④**`欠落理由=` に書かれた事実タグ（妙味・final順位・本線）と predictions.csv の突合**（2026-09-21 以降・不一致は ERROR。回帰テストは `log/test_reason_tags.py`）、⑤**判断タグ（`適性行=` `10-7=` `減点根拠=`）とプロファイル事実タグの突合**（2026-10-03 以降・遵守検証 K3。回帰テストは `log/test_compliance.py`、`--retro` で過去ログへの後付け検出を表示）。タグ書式は `log/README.md` が正本
   - 「自己検証はプロンプトでなく機械チェックに置く」方針のため、応答内での再計算宣言は行わない（`プロジェクト指示_v3.md`「実行品質」節）
-- **analyze.py**：印別複勝率・回収率、R値帯別成績、ルール遵守状況（capture軸込み）、ベースライン比較、r_adj分離、**モデル序列の診断**（1着馬の最終点順位・印プール捕捉率・印の単調性）、**展開不利の好走候補と4角位置×上がりの積**（仮説15）、**較正カウンタのサンプル単位内訳**（群1過去統計／群2頭単位／群3レース単位）
+- **analyze.py**：印別複勝率・回収率、R値帯別成績、ルール遵守状況（capture軸込み）、ベースライン比較、r_adj分離、**モデル序列の診断**（1着馬の最終点順位・印プール捕捉率・印の単調性）、**展開不利の好走候補と4角位置×上がりの積**（仮説15）、**較正カウンタのサンプル単位内訳**（群1過去統計／群2頭単位／群3レース単位）、**遵守監査と判断の一貫性**（監査訂正率・逸脱件数・同じ事実で判断が割れた組＝ロードマップ §11 K4・K5）
 - **backtest.py**：印別・R帯別の単勝/複勝ベタ買いROI、三連単フォーメーション頭◎のみ vs ◎○両置きの比較（R12検証）、三連複 軸流し vs BOX、**三連複の軸候補5通り（◎／妙味最上位／最終点2位／最終点3位／当日1番人気）の paired 対戦比較**（仮説12・帯域別）。複勝ROIは place_odds_max による**上限推定（楽観値）**
 - **Claude.aiのチャットから直接実行できる**：「集計して」「バックテスト実行」でClaudeがコード実行環境からGitHub最新mainを取得して実行する（ナレッジSyncとは別ルート・Sync now不要）
 - 閾値・係数の見直しはこの集計を根拠に行い、n不足での再調整はしない（n<10は参考値）
@@ -185,7 +187,7 @@ python3 log/mark.py --slug <race_id> --template      # 2. 全頭シミュレー�
 #   3. _handoff/sim/<race_id>.csv を LLM が埋める（base・勝ち筋・崩れ筋・sim_score・加算4項・妙味・tags）。オッズ・人気は見ない
 #   4. _handoff/odds/<race_id>.csv に締切前オッズ（horse_no,win_odds,place_odds_max,popularity）
 python3 log/mark.py --slug <race_id>                 # 5. 判定（ERROR が残れば印は出ない・何度でも再実行）
-python3 log/mark.py --slug <race_id> --write         # 6. predictions.csv へ反映 → validate.py → gate.py
+python3 log/mark.py --slug <race_id> --write         # 6. predictions.csv へ反映 → tag_profile.py → validate.py → gate.py
 ```
 
 並走中は従来の `#予想`（指示v3 工程）が正で、v4 の印は `predictions.notes` の `v4=paper` 行として比較する。採用判定は §5-3 B-5。
