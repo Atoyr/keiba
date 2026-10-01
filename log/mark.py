@@ -62,7 +62,8 @@ SCN = ["front", "mid", "back"]
 SCN_JA = {"front": "前残り", "mid": "中立", "back": "前崩れ"}
 FORBID = re.compile(r"人気|オッズ|倍|単勝|複勝")
 
-# S2 シナリオ重みの初期値（v2 §5-2・改訂は U6 較正レビュー）
+# S2 シナリオ重みの初期値（v2 §5-2）。U6（2026-10-02）で全行 n<10 のため据え置き。次の改訂判定は n=30 レビュー
+# （行ごとの実測は analyze.py シミュレーション較正節 (6) が毎回出す）
 def scenario_weights(race):
     ps = race.get("pace_score")
     hana = race.get("hana_type") or "なし"

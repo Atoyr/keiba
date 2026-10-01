@@ -244,6 +244,99 @@ def section_sim_calibration(preds, races):
         print("(5) 末脚指数： " + " ".join(f"{k} {h}/{n}({h / n * 100:.0f}%)" for k, (n, h) in t2.items()))
     else:
         print("(5) 末脚指数：agari_diff のある行なし")
+    section_s2_calibration(races)
+
+
+# 実際の決着（bias_actual の自由文）→ S2 のシナリオ名。前崩れ側を先に見る（「外差し」を「前」で拾わないため）。
+# 「好位〜中団差し」は中立（S3 の中立帯＝4角6番手以内 or 上がり3位以内に収まる決着）として扱う
+_SETTLE = (("前崩れ", re.compile(r"外差し|差し有利|^差し|中位差し")),
+           ("前残り", re.compile(r"内前|前有利|前残り|前〜|先行有利")),
+           ("中立", re.compile(r"フラット|好位|中団")))
+
+
+def settle_class(bias):
+    for name, pat in _SETTLE:
+        if pat.search(bias or ""):
+            return name
+    return None
+
+
+def _wilson90(k, n):
+    z = 1.645
+    p = k / n
+    c = (p + z * z / (2 * n)) / (1 + z * z / n)
+    h = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** .5) / (1 + z * z / n)
+    return max(0.0, c - h), min(1.0, c + h)
+
+
+def section_s2_calibration(races):
+    """S2 シナリオ重み表の較正（群3・U6 第2回較正レビュー 2026-10-02）。
+    初期値は mark.scenario_weights から読む（重み表の正本は mark.py）。実際の決着は bias_actual を
+    settle_class で機械分類する。改訂は行ごとに n≧10 のときだけ（R19・ガードレール1）。
+    区間は Wilson 90%（§9・§10 の『差を区別できるか』と同じ読み方。閾値ではなく表示）"""
+    mk = _load_module("mark_mod", os.path.join(BASE, "mark.py"))
+    if mk is None:
+        print("(6) S2 重み表：mark.py が無いため初期値を読めない")
+        return
+    rows, odd = defaultdict(list), []
+    for r in races:
+        ps = to_f(r.get("pace_score_pre"))
+        if ps is None or not r.get("result_1st") or "ダ" in (r.get("course") or ""):
+            continue
+        flag = r.get("pace_flag_pre") or ""
+        hana = ("競り合い型" if re.search(r"競り合い型[^/／）)]*A本線", flag)
+                else "単騎" if "単騎" in flag else "なし")
+        race = {"pace_score": ps, "hana_type": hana, "going": (r.get("going") or "").strip(),
+                "straight": "直" in (r.get("course") or "")}
+        w = mk.scenario_weights(race)
+        if race["straight"]:
+            key = "直線競走（R33）"
+        elif race["going"] in ("重", "不良"):
+            key = "重・不良（R29・前崩れ0へ振替）"
+        elif ps <= 3 or hana == "単騎":
+            key = "≦3・単騎"
+        elif ps <= 6:
+            key = "4〜6"
+        elif hana == "競り合い型":
+            key = "≧7・競り合い型本線"
+        else:
+            key = "≧7・隊列確定型／型不明"
+        s = settle_class(r.get("bias_actual"))
+        if s is None:
+            odd.append(r["race_id"])
+            continue
+        rows[key].append((w, s))
+    print("(6) S2 重み表の較正（群3・ダート除く・実際の決着＝bias_actual の機械分類・改訂は行 n≧10 のみ）")
+    print(f"    {'行':<22} {'n':>2}  前残り 中立 前崩れ ｜ 初期値 前/中/崩 ｜ 初期値が実測90%区間の外のセル")
+    order = ["≦3・単騎", "4〜6", "≧7・隊列確定型／型不明", "≧7・競り合い型本線", "重・不良（R29・前崩れ0へ振替）", "直線競走（R33）"]
+    pooled = []
+    for key in order:
+        xs = rows.get(key, [])
+        if not xs:
+            print(f"    {key:<22}  0  -")
+            continue
+        n = len(xs)
+        cnt = {sc: sum(1 for _, s in xs if s == sc) for sc in ("前残り", "中立", "前崩れ")}
+        ws = sorted({(w["front"], w["mid"], w["back"]) for w, _ in xs})
+        wtxt = "・".join(f"{a:g}/{b:g}/{c:g}" for a, b, c in ws)
+        outs = []
+        for (a, b, c) in ws:
+            for sc, v in zip(("前残り", "中立", "前崩れ"), (a, b, c)):
+                lo, hi = _wilson90(cnt[sc], n)
+                if not lo <= v <= hi:
+                    outs.append(f"{sc}{v:g}∉[{lo:.2f},{hi:.2f}]")
+        verdict = ("、".join(outs) or "なし") + ("" if n >= 10 else "（n<10・改訂不可）")
+        print(f"    {key:<22} {n:>2}  {cnt['前残り']:>4} {cnt['中立']:>4} {cnt['前崩れ']:>4}  ｜ {wtxt:<11} ｜ {verdict}")
+        if key.startswith("≧7"):
+            pooled += xs
+    if pooled:
+        n = len(pooled)
+        cnt = {sc: sum(1 for _, s in pooled if s == sc) for sc in ("前残り", "中立", "前崩れ")}
+        iv = " ".join(f"{sc}{cnt[sc]}/{n}[{_wilson90(cnt[sc], n)[0]:.2f},{_wilson90(cnt[sc], n)[1]:.2f}]"
+                      for sc in ("前残り", "中立", "前崩れ"))
+        print(f"    参考：≧7・良〜稍重・コーナー戦（型をまとめた集計）n={n} {iv}")
+    if odd:
+        print(f"    分類不能（bias_actual に決着位置の記述なし）：{', '.join(odd)}")
 
 
 def _load_module(name, path):
@@ -746,7 +839,9 @@ def main():
             if f_.get("rule_id") != rid_ or f_.get("fired") != "1":
                 continue
             rname = name_by_id.get(f_.get("race_id"), "")
-            if rname and rname in origin:  # 生成元レースは除外（R17）
+            # 生成元レースは除外（R17）。台帳の origin_race は「函館2歳S2026」のように略記されるので
+            # race_name の「ステークス」を「S」に縮めた形でも照合する（2026-10-02・第2回較正レビュー）
+            if rname and (rname in origin or rname.replace("ステークス", "S") in origin):
                 continue
             cnt += 1
             o = f_.get("outcome") or "?"
@@ -758,17 +853,20 @@ def main():
         caps = (" capture[" + " ".join(f"{k}:{v}" for k, v in cap.items()) + "]") if cap else ""
         # 判定は capture 軸で行う（R19・2026-08-03改訂）。旧 outcome 軸は中立に68%が滞留し
         # 「逆効果≧効いた」が構造的に発動しえなかった（P1-3）
+        # 方向なし（該当0頭・非対象帯域・競走中止）は判定材料を持たない行なので、発火件数にも
+        # 空振り率の分母にも数えない（R19・2026-10-02 第2回較正レビュー）。数えると「該当場面なし」の
+        # 記録だけで発火5件に届く（R34：記録上8件のうち圏外落ちが実在したのは2件）
+        judged = sum(cap.get(k, 0) for k in ("的中", "空振り", "逆行"))
         judge = ""
         if direction == "手続き":
             judge = " ※手続き系＝capture対象外（遵守率で判断）"
-        elif cnt < 5:
-            judge = " （判定保留: 発火5件未満）"
-        elif not cap:
-            judge = " ★発火5件到達だが capture 未記入で判定不能"
+        elif cnt and not cap:
+            judge = " ★capture 未記入で判定不能"
+        elif judged < 5:
+            judge = f" （判定保留: 判定対象{judged}件＝発火5件未満・方向なしを除く）"
         else:
             neg, pos = cap.get("逆行", 0), cap.get("的中", 0)
             miss = cap.get("空振り", 0)
-            judged = sum(cap.values())
             # 空振り優勢ガード（2026-08-03・R19に追加）。空振りは機能の証拠にも
             # 逆機能の証拠にもならないため、件数だけで昇格させると未検証のルールが現行化する。
             # 起点：R20（発火6件・空振り5=83%）が条文上は昇格条件を満たしてしまった件

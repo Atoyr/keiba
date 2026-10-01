@@ -5,13 +5,16 @@
 rules_master の買い目系ルールのうち、bets.structure と predictions の数値から
 機械判定できる条文を買い目確定前に一括判定する（チェックの置き場所の原則）:
 
-  R23  荒帯域で全券種が同一1頭の複勝圏に依存する構成の禁止（band=荒のみ・簡易判定）
-  R24  妙味閾値到達馬（荒帯域4以上・他5以上）の紐は全券種で統一
-  R31  軸抜けで全券種が同時失効する構成の検出（軸選定理由 or 併設券種を要求）
-  R32  券種間の紐リスト突合（欠落には 欠落理由= の記録を要求）
+  R48(a)  軸抜けで全券種が同時失効する構成の検出（軸選定理由 or 併設券種を要求）〔旧R31〕
+  R48(b)  荒帯域で全券種が同一1頭の複勝圏に依存する構成の禁止（band=荒のみ・簡易判定）〔旧R23〕
+  R48(c)  final上位2頭の直積を持つ券種が1つ以上あること〔旧R36〕
+  R48(d)  軸を含まない紐同士のペアが全券種合計2点以上（＋軸と人気同層に固めない）〔旧R37〕
+  R49     券種間の紐リスト突合（欠落には 欠落理由= の記録を要求）〔旧R32〕。
+          妙味閾値到達馬（荒帯域4以上・他5以上）の紐は全券種で統一〔旧R24〕
   R35  R<4.0 の☆は全券種の3着紐に保全（＋predictions.notes にR35根拠）。欠落理由= があれば WARN 止まり（2026-09-11）
-  R36  final上位2頭の直積を持つ券種が1つ以上あること
-  R37  軸を含まない紐同士のペアが全券種合計2点以上（＋軸と人気同層に固めない）
+
+R48(e)（軸∪紐プールの全ペア列挙・旧R42）は未実装（ペア単位の欠落理由照合は validate.py 層2）。
+番号は 2026-10-02 の第2回較正レビュー C1（同族統合）で付け替えた。判定ロジックは統合前と同じ。
 
 適用対象は APPLY_FROM（2026-08-17）以降のレース。それ以前は --race 指定時のみ
 参考表示する（遡及裁定はしない・R17）。structure の解釈はヒューリスティックであり、
@@ -87,7 +90,7 @@ def parse_structure(structure):
 
 
 def co_pairs(row):
-    """その券種の同一買い目内で同居しうる馬番ペアの集合（R36用・楽観側の近似）。"""
+    """その券種の同一買い目内で同居しうる馬番ペアの集合（R48(c)用・楽観側の近似）。"""
     pairs, axis, partners, horses, _ = row["_p"]
     if pairs is not None:
         return set(pairs)
@@ -163,7 +166,7 @@ def main():
                 print(f"  [GATE-WARN] {rule}: {msg}")
                 warns += 1
 
-        # --- R24 / R32: 券種間の紐突合 ---
+        # --- R49: 券種間の紐突合（旧R24＝妙味閾値到達馬／旧R32＝それ以外） ---
         sets = {i: b["_p"][3] for i, b in enumerate(rows) if b["_p"][3]}
         union = set().union(*sets.values()) if sets else set()
         thr = 4.0 if band == "荒" else 5.0
@@ -175,13 +178,13 @@ def main():
                 (miss24 if (myomi.get(h) or 0) >= thr else miss32).append((h, b.get("bet_type")))
         has_reason = "欠落理由=" in notes_all
         if miss24:
-            report(has_reason and None, "R24",
+            report(has_reason and None, "R49(妙味)",
                    f"妙味{thr:g}以上の馬が券種間で欠落 {miss24}" + ("（欠落理由あり）" if has_reason else "（欠落理由なし）"))
         if miss32 and not miss24:
-            report(None if has_reason else False, "R32",
+            report(None if has_reason else False, "R49",
                    f"紐が券種間で不一致 {miss32}" + ("（欠落理由あり→WARN止まり）" if has_reason else "（欠落理由の記録がない）"))
         if not miss24 and not miss32 and sets:
-            report(True, "R24/R32", "全券種の紐リストが一致")
+            report(True, "R49", "全券種の紐リストが一致")
 
         # --- R35: R<4.0 の☆の3着紐保全 ---
         for p in ps:
@@ -197,12 +200,12 @@ def main():
                    f"☆#{no}（R={rv:g}<4.0）全券種保全={'○' if everywhere else '×'}・妙味根拠タグ={'○' if tagged else '×'}"
                    + ("" if ok35 else ("（欠落理由あり→WARN止まり）" if has_reason else "")))
 
-        # --- R36: final上位2頭の直積 ---
+        # --- R48(c): final上位2頭の直積（旧R36） ---
         top2 = [h for h, _ in sorted(final.items(), key=lambda kv: -(kv[1] or 0))[:2]]
         if len(top2) == 2:
             pair = frozenset(top2)
             hit = any(pair in co_pairs(b) for b in rows)
-            report(hit or (None if has_reason else False), "R36",
+            report(hit or (None if has_reason else False), "R48(c)",
                    f"final上位2頭 {sorted(top2)} の直積" + ("あり" if hit else "が全券種に不在" + ("（欠落理由あり）" if has_reason else "")))
 
         # --- 軸の特定（三連複系の軸 → なければ◎） ---
@@ -216,7 +219,7 @@ def main():
                 if (p.get("mark") or "").strip() == "◎":
                     axis = int(to_f(p["horse_no"])); break
 
-        # --- R37: 非軸ペア≧2 ＋ 人気同層回避 ---
+        # --- R48(d): 非軸ペア≧2 ＋ 人気同層回避（旧R37） ---
         if axis is not None:
             cnt, same_layer = 0, []
             for b in rows:
@@ -230,26 +233,26 @@ def main():
                         if ap and all(abs((pop.get(h) or 99) - ap) <= 2 for h in p2):
                             same_layer.append(sorted(p2))
             ok = cnt >= 2
-            report(ok or (None if has_reason else False), "R37",
+            report(ok or (None if has_reason else False), "R48(d)",
                    f"軸#{axis}を含まないペア {cnt}点（要2点以上）")
             if ok and same_layer and len(same_layer) == cnt:
-                report(None, "R37", f"非軸ペアが全て軸と人気±2以内の同層 {same_layer}（分散の趣旨に反する）")
+                report(None, "R48(d)", f"非軸ペアが全て軸と人気±2以内の同層 {same_layer}（分散の趣旨に反する）")
 
-        # --- R23: 荒帯域の1頭依存禁止 ／ R31: 軸抜け全滅 ---
+        # --- R48(b): 荒帯域の1頭依存禁止（旧R23） ／ R48(a): 軸抜け全滅（旧R31） ---
         req_sets = [required_horses(b) for b in rows if b["_p"][4] or b["_p"][3]]
         if req_sets:
             common = set.intersection(*[s if s else set(range(1, 19)) for s in req_sets])
             common = {h for h in common if all(h in (s or {h}) for s in req_sets)}
             all_dependent = bool(req_sets) and all(s for s in req_sets) and bool(set.intersection(*req_sets))
             if band == "荒":
-                report(not all_dependent, "R23",
+                report(not all_dependent, "R48(b)",
                        f"荒帯域の1頭依存: " + (f"全券種が {sorted(set.intersection(*req_sets))} に依存" if all_dependent else "依存なし"))
             if all_dependent:
                 has_sel = "軸選定=" in notes_all
-                report(None if has_sel else False, "R31",
+                report(None if has_sel else False, "R48(a)",
                        "軸抜けで全券種が同時失効する構成" + ("（軸選定=の理由記録あり→容認）" if has_sel else "（軸選定理由の記録も併設券種もない）"))
             elif axis is not None:
-                report(True, "R23/R31", "軸抜けでも生存する券種あり")
+                report(True, "R48(a)(b)", "軸抜けでも生存する券種あり")
 
     print(f"\nGATE-FAIL {fails}件 / GATE-WARN {warns}件"
           + ("（参考モードのFAILは裁定・終了コードに数えない）" if only else "")
