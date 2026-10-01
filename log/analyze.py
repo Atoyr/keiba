@@ -246,6 +246,132 @@ def section_sim_calibration(preds, races):
         print("(5) 末脚指数：agari_diff のある行なし")
 
 
+def _load_module(name, path):
+    import importlib.util
+    if not os.path.exists(path):
+        return None
+    spec = importlib.util.spec_from_file_location(name, path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def section_compliance(preds, races, fires):
+    """遵守監査と判断の一貫性（ロードマップ v2 §11-3 K4・K5）。
+
+    自己申告の followed は台帳外の逸脱を測れないので、(1) 監査で訂正した件数と逸脱の件数、
+    (2)〜(4) 同じ事実の下で判断が割れた組を並べる。割れは誤りの証拠ではなく、#集計・較正レビューで見る候補。
+    事実タグ（K1）の無い過去レースはプロファイル md からメモリ上で引く（CSV には書かない＝遡及入力しない）。
+    """
+    V = _load_module("validate_mod", os.path.join(BASE, "validate.py"))
+    tp = _load_module("tag_profile_mod", os.path.join(os.path.dirname(BASE), "tools", "tag_profile.py"))
+    print()
+    print("=" * 60)
+    print("■ 遵守監査と判断の一貫性（ロードマップ v2 §11-3 K4・K5）")
+    print("=" * 60)
+    race_by = {r["race_id"]: r for r in races}
+
+    # (1) 監査訂正率・逸脱件数（K4）
+    fired = [f for f in fires if f.get("fired") == "1"]
+    corr = [f for f in fired if "監査訂正" in (f.get("notes") or "")]
+    rate = f"{len(corr) / len(fired) * 100:.1f}%" if fired else "-"
+    print(f"(1) 監査訂正（rule_fires.notes の 監査訂正=）：{len(corr)}/{len(fired)} 発火行（{rate}）"
+          + ("：" + "、".join(f"{f['race_id']} {f['rule_id']}" for f in corr) if corr else ""))
+    dev = {}
+    for r in races:
+        v = V.tag_long(r.get("notes") or "", "逸脱") if V else None
+        if v:
+            dev[r["race_id"]] = len([x for x in re.split(r"[;；]", v) if x.strip()])
+    decided = [r for r in races if (r.get("result_1st") or "").strip() and (r.get("date") or "") >= (V.COMPLIANCE_FROM if V else "9999")]
+    print(f"    逸脱=（races.notes）：{sum(dev.values())}件"
+          + (f"／施行日以降の確定 {len(decided)} レースで 1レースあたり {sum(dev.get(r['race_id'], 0) for r in decided) / len(decided):.2f}件" if decided else "／施行日以降の確定レースなし")
+          + ("：" + "、".join(f"{k} {v}件" for k, v in dev.items()) if dev else ""))
+    if V is None:
+        print("    ※ validate.py を読めないため (2)〜(4) を省略")
+        return
+
+    # (2) 10-7 の適用 × pace_flag_pre の型（ペーススコア≧7）
+    cells = defaultdict(list)
+    for r in races:
+        ps = to_f(r.get("pace_score_pre"))
+        if ps is None or ps < V.PACE_REVERSAL_FROM:
+            continue
+        flag = r.get("pace_flag_pre") or ""
+        kind = "同確率" if "同確率" in flag else ("前崩れ単独本線" if V.maekuzure_main(flag) else "その他の本線")
+        m = V.T107_RE.search(r.get("notes") or "")
+        cells[(kind, m.group(1) if m and m.group(1) in ("適用", "不適用") else "未記録")].append(r["race_name"])
+    n_all = sum(len(v) for v in cells.values())
+    print(f"(2) 10-7 前後反転の適用 × pace_flag_pre の型（ペーススコア≧{V.PACE_REVERSAL_FROM}・{n_all}R。`10-7=` タグのみ集計・自由文は数えない）")
+    for kind in ("前崩れ単独本線", "同確率", "その他の本線"):
+        row = [f"{a} {len(cells[(kind, a)])}" for a in ("適用", "不適用", "未記録")]
+        print(f"    {kind:<10} " + " ／ ".join(row))
+        if cells[(kind, "適用")] and cells[(kind, "不適用")]:
+            print(f"      ★割れ：適用 {cells[(kind, '適用')]} ／ 不適用 {cells[(kind, '不適用')]}")
+
+    # 事実タグ：CSV にあればそれを、無ければプロファイル md からメモリ上で
+    prof_cache = {}
+
+    def facts(p):
+        raw, f = V.profile_facts(p.get("base_breakdown") or "")
+        if len(raw) == len(V.PROFILE_FACT_KEYS) or tp is None:
+            return f
+        rid = p["race_id"]
+        if rid not in prof_cache:
+            r = race_by.get(rid, {})
+            path = tp.profile_path(r.get("date"), r.get("race_name"))
+            prof_cache[rid] = tp.parse_profile(path) if os.path.exists(path) else None
+        prof = prof_cache[rid]
+        if not prof or not prof["horses"]:
+            return {}
+        exp, _ = tp.expected_facts(prof, p["horse_no"], p["horse_name"])
+        return V.profile_facts(tp.facts_str(exp))[1]
+
+    # (3) 距離帯経験あり × 実距離経験なし で「距離の未経験」を書いた馬の係数（R38 の定義からは未経験でない層）
+    split = defaultdict(list)
+    for p in preds:
+        f = facts(p)
+        if f.get("距離帯経験") != "あり" or f.get("実距離経験") != "なし":
+            continue
+        m = re.search(r"(\d{3,4})", race_by.get(p["race_id"], {}).get("course") or "")
+        if not m or not V.unexp_claims((p.get("base_breakdown") or "") + " / " + (p.get("notes") or ""), int(m.group(1))):
+            continue
+        items = V.parse_breakdown((p.get("coef_breakdown") or "").strip(), V.COEF_ITEM) or []
+        apt = next((v for k, v in items if k.startswith("適性")), None)
+        key = "適性なし" if apt is None else ("適性>1.00" if apt > 1.0 else ("適性=1.00" if apt == 1.0 else "適性<1.00"))
+        split[key].append(f"{race_by[p['race_id']]['race_name']} #{p['horse_no']} {p['horse_name']}"
+                          f"（{apt if apt is not None else '-'}・印{p.get('mark') or '-'}・{p.get('finish_pos') or '?'}着）")
+    print("(3) 距離帯経験あり×実距離経験なし で距離を未経験と書いた馬の適性係数（validate (b) と同じ検出。事実タグの無いレースは md から計算）")
+    if split:
+        for k in ("適性>1.00", "適性=1.00", "適性<1.00", "適性なし"):
+            if split[k]:
+                print(f"    {k}: " + "、".join(split[k]))
+        if len([k for k in split if split[k]]) >= 2:
+            print("    ★割れ：同じ事実・同じ記述で係数の扱いが分かれている（R38 の定義では距離帯経験ありは未経験でない）")
+    else:
+        print("    該当なし")
+
+    # (4) 適性行=（施行日以降）：同一レース内で事実が同じなのに行名が割れた組
+    groups = defaultdict(lambda: defaultdict(list))
+    n_rows = 0
+    for p in preds:
+        v = V.tag_long(p.get("notes") or "", "適性行")
+        if v is None:
+            continue
+        n_rows += 1
+        f = facts(p)
+        key = (p["race_id"], f.get("機械", "?"), f.get("距離帯経験", "?"), f.get("実距離経験", "?"))
+        groups[key][V.parse_apt_row(v)[0]].append(f"#{p['horse_no']}")
+    print(f"(4) 適性行= × 事実タグ（同一レース・同じ 機械区分×距離帯経験×実距離経験 で行名が割れた組）：記録 {n_rows} 頭")
+    splits = [(k, g) for k, g in groups.items() if len(g) >= 2]
+    for (rid, sty, de, re_), g in splits:
+        print(f"    {race_by.get(rid, {}).get('race_name', rid)} 機械{sty}・距離帯経験{de}・実距離経験{re_}: "
+              + " ／ ".join(f"{row}={','.join(ns)}" for row, ns in g.items()))
+    if not n_rows:
+        print(f"    記録なし（{V.COMPLIANCE_FROM} 施行。割れは誤りの証拠ではなく、行を分けた条件が自由文に書かれているかを #集計 で見る）")
+    elif not splits:
+        print("    割れなし")
+
+
 def main():
     preds = load("predictions.csv")
     bets = load("bets.csv")
@@ -593,6 +719,7 @@ def main():
 
     section_ablation(preds, races)
     section_sim_calibration(preds, races)
+    section_compliance(preds, races, fires)
 
     print()
     print("=" * 60)

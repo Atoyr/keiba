@@ -93,6 +93,110 @@ REASON_FACTS = (
 )
 
 
+# --- 遵守検証：判断タグの事実照合（2026-10-01 #設計・ロードマップ v2 §11-3 K1〜K3） ---
+# スプリンターズS2026 で、発火22件すべて followed=1 なのに台帳の外（評価ルール10-7・
+# コース補正表の係数行・R38 の距離帯定義）で適用の逸脱が2件起きていた。プロファイルは
+# `当該距離帯経験=あり` と出していたのに、係数の段で未経験扱いにして 1.00 へ保留した形で、
+# followed を書く行が無いので自己申告の遵守率には表れない。層2（`欠落理由=`）と同じ作りで、
+# 判断を構造化タグに書かせ、その中の事実をプロファイル由来のタグと突き合わせる：
+#   K1 事実タグ  base_breakdown の `機械脚質=` `距離帯経験=` `実距離経験=`（tools/tag_profile.py が付ける）
+#   K2 判断タグ  races.notes `10-7=`／predictions.notes `適性行=` `減点根拠=`
+#   K3 照合      (a)〜(e)。書式は log/README.md「判断タグ」節が正本
+# 遡及はしない：施行日より前のレースに判断タグを後付けするのは当時の判断の再構成＝捏造になる。
+COMPLIANCE_FROM = "2026-10-03"
+# §11-5 要判断1：WARN は 169 件に埋もれて確定を止められないので ERROR で始める。"WARN" にすれば全項目が WARN へ落ちる
+COMPLIANCE_LEVEL = "ERROR"
+# 係数層（coef_breakdown の 適性 項）を使った馬に `適性行=` を必須にするか。
+# 任意にすると書かないことで (a)(b) を素通りできる（`5走距離帯=` が任意のあいだ 187行中0件だったのと同じ）
+APT_ROW_REQUIRED = True
+PROFILE_FACT_KEYS = ("機械脚質", "距離帯経験", "実距離経験")
+# `適性行=<行名>:<事実タグ…>:<自由文>` の事実タグ（任意・書いたら K1 タグと一致すること）
+APT_ROW_FACTS = (
+    ("機械", re.compile(r"^機械\s*(逃げ|先行|差し|追込|未確定)$")),
+    ("r", re.compile(r"^r\s*([0-9]*\.?[0-9]+|不明)$")),
+    ("IQR", re.compile(r"^IQR\s*([0-9]*\.?[0-9]+|不明)$")),
+    ("距離帯経験", re.compile(r"^距離帯経験\s*[=＝]?\s*(あり|なし)$")),
+    ("実距離経験", re.compile(r"^実距離経験\s*[=＝]?\s*(あり|なし)$")),
+)
+# (b) 距離を「未経験」と書いた自由文。当該レース距離の数字に続く句だけを拾う（道悪・坂・コースの未経験は別次元）。
+# 「未経験」の語だけで拾うと適合率 3/8 だった（§11-1）ので、距離の数字と `距離帯経験=あり` の両方を条件にする
+UNEXP_WORDS = r"(?:未経験|出走0(?![0-9])|出走ゼロ|出走なし|実走歴なし|初出走|初距離)"
+UNEXP_OTHER_SUBJECT = re.compile(r"道悪|重馬場|稍重|不良|坂|コース|競馬場|ダート|重賞|G[123]|回り|洋芝|実距離")
+# `10-7=適用:<根拠>` ／ `10-7=不適用:<根拠>`（races.notes・ペーススコア≧7 で必須）
+T107_RE = re.compile(r"(?<![0-9A-Za-z\-])10-7\s*[=＝]\s*([^:：/／\s(（]*)")
+PACE_REVERSAL_FROM = 7  # 評価ルール10-7・隊列手順第1項の前崩れ域（値は両ファイルが正本。ここでは判定の入口にだけ使う）
+# `減点根拠=#<馬番>:<種別>:<内容>`（R34）。有効な要素は 実測 と 自己実績n（n≧3）。未経験は不利でなく未知（R38・R40）
+DEDUCT_ITEM = re.compile(r"^\s*#\s*(\d{1,2})\s*[:：]\s*(実測|未経験|自己実績\s*(\d+))\s*[:：]")
+R34_MARKS = {"◎", "○", "▲", "☆"}
+
+
+def _load_tag_profile():
+    """tools/tag_profile.py（K1）を読む。無ければ None＝プロファイル md との突合を省く。"""
+    path = os.path.join(os.path.dirname(BASE), "tools", "tag_profile.py")
+    if not os.path.exists(path):
+        return None
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("tag_profile_mod", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def profile_facts(bb):
+    """base_breakdown の K1 事実タグを照合用の {名前: 値} へ。無い項は含めない。"""
+    raw = {}
+    for k in PROFILE_FACT_KEYS:
+        m = re.search(r"(?:^|/\s*)%s=([^/\s]+)" % k, bb or "")
+        if m:
+            raw[k] = m.group(1)
+    out = {k: raw[k] for k in ("距離帯経験", "実距離経験") if k in raw}
+    f = [x.strip() for x in raw.get("機械脚質", "").split(":")]
+    if len(f) == 3 and f[1].startswith("r") and f[2].startswith("IQR"):
+        out["機械"], out["r"], out["IQR"] = f[0], f[1][1:], f[2][3:]
+    return raw, out
+
+
+def _same_fact(name, claimed, actual):
+    if name in ("r", "IQR"):
+        a, b = to_f(claimed), to_f(actual)
+        if a is not None and b is not None:
+            return abs(a - b) <= 0.0051
+    return claimed == actual
+
+
+def parse_apt_row(text):
+    """`適性行=` の値を (行名, [(事実名, 値)], 自由文) に。"""
+    fields = [x.strip() for x in re.split(r"[:：]", text or "")]
+    facts, free = [], []
+    for fld in fields[1:]:
+        for name, pat in APT_ROW_FACTS:
+            m = pat.match(fld)
+            if m:
+                facts.append((name, m.group(1)))
+                break
+        else:
+            free.append(fld)
+    return (fields[0] if fields else ""), facts, "：".join(free)
+
+
+def unexp_claims(text, dist):
+    """自由文のうち「当該レース距離は未経験」と読める句を返す（(b) の入力）。"""
+    pat = re.compile(r"(?<![0-9])%d\s*m?[^/／;；。、,，()（）\[\]【】]{0,14}?%s(?!ではな|でな)" % (dist, UNEXP_WORDS))
+    text = text or ""
+    # 主語が距離でない句は拾わない：数字の後ろ（「1200mは坂が未経験」）と直前4字（「古馬重賞1200の出走0」）の両方を見る
+    return [m.group(0) for m in pat.finditer(text)
+            if not UNEXP_OTHER_SUBJECT.search(m.group(0)[len(str(dist)):])
+            and not UNEXP_OTHER_SUBJECT.search(text[max(0, m.start() - 4):m.start()])]
+
+
+def maekuzure_main(flag):
+    """pace_flag_pre が「前崩れ」を単独の本線にしているか。同確率・並列・書き換え（→）は本線扱いにしない。"""
+    f = (flag or "").strip()
+    if "同確率" in f or "→" in f:
+        return False
+    return re.split(r"[/／]", f, 1)[0].strip().startswith("前崩れ")
+
+
 def parse_reason_items(text):
     """`欠落理由=` の値を項目リストへ。各項目は (馬番tuple, cat, 本文)。"""
     out = []
@@ -310,6 +414,135 @@ def check_reason_tags(rid, race_row, notes, rbets, prows):
                 a = (p.get("s_mid") or "").strip()
                 if a != claimed:
                     err(f"{head}: 本線{claimed} が #{nos[0]} の s_mid={a or '空欄'} と不一致")
+
+
+def check_compliance(rid, race_row, prows, rbets, rfires, expected=None):
+    """K3：判断タグに書かれた事実を K1 事実タグ（プロファイル由来）と突き合わせる。
+
+    expected は {馬番: {キー: 値}}＝プロファイル md から引いた「付いているべき K1 タグ」。
+    None なら md との突合を省く（md が無い・tools/tag_profile.py が無い）。
+    結果確定済みのレースは、races.notes の `逸脱=` に記録があれば WARN へ落とす
+    （確定後に判断の文面を書き換えると監査痕跡が消えるため、直すのでなく記録する・V4-0）。
+    """
+    date = (race_row.get("date") or "").strip()
+    if not date or date < COMPLIANCE_FROM or not prows:
+        return                      # 遡及しない
+    notes = race_row.get("notes") or ""
+    decided = bool((race_row.get("result_1st") or "").strip())
+    audited = [x for x in re.split(r"[;；]", tag_long(notes, "逸脱") or "") if x.strip()] if decided else []
+
+    def viol(msg, key=None):
+        if key and any(re.search(key, x) for x in audited):
+            warn(msg + "（逸脱= に記録済み・監査痕跡として保持）")
+        elif COMPLIANCE_LEVEL == "ERROR":
+            err(msg)
+        else:
+            warn(msg)
+
+    def horse_key(no):
+        return r"#\s*%s(?![0-9])" % re.escape(no)
+
+    m = re.search(r"(\d{3,4})", race_row.get("course") or "")
+    dist = int(m.group(1)) if m else None
+
+    # ---- K1：事実タグの有無と、プロファイル md との一致 ----
+    missing, stale, facts_by_no = [], [], {}
+    for p in prows:
+        no = (p.get("horse_no") or "").strip()
+        raw, facts = profile_facts(p.get("base_breakdown") or "")
+        facts_by_no[no] = facts
+        if any(k not in raw for k in PROFILE_FACT_KEYS):
+            missing.append(no)
+        elif expected is not None and expected.get(no) is not None and raw != expected[no]:
+            stale.append(no)
+    if missing:
+        viol(f"predictions.csv [{rid}]: base_breakdown に事実タグ {list(PROFILE_FACT_KEYS)} がない馬 #{', #'.join(missing)}"
+             f"（python3 tools/tag_profile.py --slug {rid} を実行する。手で書かない・§11-3 K1）")
+    if stale:
+        viol(f"predictions.csv [{rid}]: 事実タグがプロファイル md と食い違う馬 #{', #'.join(stale)}"
+             f"（手で書き換えない。python3 tools/tag_profile.py --slug {rid} で付け直す）")
+
+    # ---- (a)(b)：適性行= と距離の未経験表記 ----
+    no_row = []
+    for p in prows:
+        no = (p.get("horse_no") or "").strip()
+        head = f"predictions.csv [{rid} #{no}]"
+        facts = facts_by_no.get(no, {})
+        pnotes = p.get("notes") or ""
+        row_val = tag_long(pnotes, "適性行")
+        free = ""
+        if row_val is None:
+            items = parse_breakdown((p.get("coef_breakdown") or "").strip(), COEF_ITEM) or []
+            if APT_ROW_REQUIRED and any(k.startswith("適性") for k, _ in items):
+                no_row.append(no)
+        else:
+            name, claimed, free = parse_apt_row(row_val)
+            if not name:
+                warn(f"{head}: 適性行= の先頭に係数表の行名がない（書式は log/README.md 判断タグ節）")
+            for fname, val in claimed:
+                actual = facts.get(fname)
+                if actual is None or actual == "取得失敗":
+                    warn(f"{head}: 適性行= の {fname}{val} を照合できない（事実タグが無い／取得失敗）")
+                elif not _same_fact(fname, val, actual):
+                    viol(f"{head}: 適性行= の {fname}{val} がプロファイルの {fname}{actual} と不一致"
+                         "（(a) 係数表の行を選んだ前提が事実と違う）", horse_key(no))
+        # (b) 距離を未経験と書いたのに 距離帯経験=あり
+        if dist and facts.get("距離帯経験") == "あり":
+            bb = re.sub(r"(5走距離帯|5走時計|1倍台|%s)=[^/\s]*" % "|".join(PROFILE_FACT_KEYS), "",
+                        p.get("base_breakdown") or "")
+            body = pnotes if row_val is None else pnotes.replace(row_val, free)
+            for hit in unexp_claims(bb + " / " + body, dist):
+                viol(f"{head}: «{hit}» と書いているがプロファイルは 距離帯経験=あり"
+                     "（(b) R38 の距離帯は±200m。実距離の話なら『実距離経験なし』と書き、"
+                     "未経験を係数保留・消しの根拠にしない＝R38・R40）", horse_key(no))
+    if no_row:
+        viol(f"predictions.csv [{rid}]: 適性係数を使ったのに 適性行= がない馬 #{', #'.join(no_row)}"
+             "（notes に 適性行=<係数表の行名>:<事実タグ…> を書く・log/README.md 判断タグ節）")
+
+    # ---- (c)(e)：評価ルール10-7 の前後反転（R46 の機械化） ----
+    ps = to_f(race_row.get("pace_score_pre"))
+    m107 = T107_RE.search(notes)
+    if m107 is None:
+        if ps is not None and ps >= PACE_REVERSAL_FROM:
+            warn(f"races.csv [{rid}]: ペーススコア {ps:g}≧{PACE_REVERSAL_FROM} なのに notes に 10-7= がない"
+                 "（(e) 10-7=適用:<根拠> か 10-7=不適用:<根拠> を書く）")
+    elif m107.group(1) not in ("適用", "不適用"):
+        warn(f"races.csv [{rid}]: 10-7={m107.group(1) or '(空)'} を解釈できない（適用 か 不適用）")
+    elif m107.group(1) == "適用" and tag_long(notes, "反転根拠") is None:
+        flag = race_row.get("pace_flag_pre") or ""
+        if maekuzure_main(flag):
+            warn(f"races.csv [{rid}]: 10-7=適用 だが 反転根拠= がない（R46：適用するなら前崩れ確定の根拠を1行記録する）")
+        else:
+            viol(f"races.csv [{rid}]: 10-7=適用 だが pace_flag_pre «{flag[:30]}» は前崩れ単独の本線でなく、"
+                 "反転根拠= もない（(c) R46：同確率・非前崩れ本線ではコース標準の妙味係数を使う）", r"10-7")
+
+    # ---- (d)：R34 の減点根拠（理由を書けば通る逃げ道の中身を数える） ----
+    r34 = [f_ for f_ in rfires if (f_.get("rule_id") or "").strip() == "R34"
+           and f_.get("fired") == "1" and f_.get("followed") == "1"]
+    scored = [(to_f(p.get("base_score")), p) for p in prows if to_f(p.get("base_score")) is not None]
+    if r34 and scored:
+        top = max(b for b, _ in scored)
+        by_type = defaultdict(set)
+        for b in rbets:
+            by_type[(b.get("bet_type") or "").strip()] |= bet_horses(b.get("structure"))
+        blob = " / ".join([notes] + [(p.get("notes") or "") for p in prows])
+        items = [DEDUCT_ITEM.match(x) for x in re.split(r"[;；]", tag_long(blob, "減点根拠") or "")]
+        for b, p in scored:
+            no = (p.get("horse_no") or "").strip()
+            if b != top or (p.get("mark") or "").strip() in R34_MARKS:
+                continue
+            mine = [x for x in items if x and x.group(1) == no]
+            valid = [x for x in mine if x.group(2) == "実測" or (x.group(3) and int(x.group(3)) >= 3)]
+            kept = bool(by_type) and all(int(no) in hs for hs in by_type.values())
+            if kept or len(valid) >= 2:
+                continue
+            head = f"rule_fires.csv [{rid} R34]: base1位 #{no} が◎○▲☆の圏外"
+            if not mine and not by_type:
+                warn(f"{head}で 減点根拠= がなく、買い目もないので全券種保全を照合できない")
+            else:
+                viol(f"{head}・全券種の紐にも無いのに followed=1。減点根拠= の有効要素は {len(valid)}/2"
+                     "（(d) 有効なのは 実測 と 自己実績n≧3。未経験は不利でなく未知＝R38・R40。"
+                     "紐に残すか followed=0 に直す）")
 
 
 def load(name):
@@ -768,6 +1001,28 @@ def main():
         if missing:
             warn(f"rule_fires.csv [{rid}]: ゲート②の対象ルールに記録が無い {missing}"
                  "（scope=買い目/両方 と status=暫定 の行は買い目確定直前に再評価して記録する・指示v2工程11）")
+
+    # ---- 遵守検証 K3（COMPLIANCE_FROM 以降・判断タグの事実照合） ----
+    fires_by_race = defaultdict(list)
+    for f_ in fires:
+        fires_by_race[(f_.get("race_id") or "").strip()].append(f_)
+    tp = None
+    for rid, r in race_by_id.items():
+        prows = preds_by_race.get(rid, [])
+        if (r.get("date") or "") < COMPLIANCE_FROM or not prows:
+            continue
+        tp = tp or _load_tag_profile()
+        expected = None
+        path = tp.profile_path(r.get("date"), r.get("race_name")) if tp else None
+        if path and os.path.exists(path):
+            prof = tp.parse_profile(path)
+            if prof["horses"]:
+                expected = {(p.get("horse_no") or "").strip():
+                            tp.expected_facts(prof, p.get("horse_no"), p.get("horse_name"))[0] for p in prows}
+        if expected is None:
+            warn(f"predictions.csv [{rid}]: プロファイル md を読めないので事実タグを突合できない"
+                 f"（references/脚質認定_{r.get('date')}_{r.get('race_name')}.md）")
+        check_compliance(rid, r, prows, bets_by_race.get(rid, []), fires_by_race.get(rid, []), expected)
 
     # ---- report ----
     print("=" * 60)
