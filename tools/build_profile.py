@@ -464,6 +464,8 @@ def classify(h, today):
     for r in h["runs"]:
         if r.get("agari") is None or r.get("best_agari") is None:
             continue
+        if not str(r.get("finish", "")).isdigit():  # 除外・取消・中止は上がり欄が 0.0 で入る
+            continue
         if r.get("surface") == "芝" and (r.get("field") or 99) <= 10 and r["best_agari"] > 34.0:
             r["agari_excluded"] = True
             continue
@@ -509,7 +511,7 @@ def fmt_time_tag(h):
         fd = r.get("field")
         fd = f"{fd}頭" if fd else "不明"
         m = re.search(r"\(([-+]?[\d.]+)\)", r.get("margin_ref") or "")
-        mg = m.group(1) if m else "不明"
+        mg = m.group(1) if m and str(r.get("finish", "")).isdigit() else "不明"  # 除外等の (0.0) は着差でない
         parts.append(f"{t}/{ar}/{fd}/{mg}")
     return ";".join(parts) if parts else "なし"
 
@@ -607,12 +609,12 @@ def render_md(today, horses, slug, agari_mode):
     if c4:
         L.append("- **R44（2026-09-20 暫定）：4角1番手（r=0.00）が1走以上ある馬は、単独ハナ0でも R39 の主導権候補に含めて展開2パターンを並列化する。**"
                  " 含めない場合は理由を1行記録する： "
-                 + "、".join(f"#{h['no']} {h['name']}（{h['c4_lead_count']}/5・機械={h['style']}）" for h in c4))
+                 + "、".join(f"#{h['no'] or h['row']} {h['name']}（{h['c4_lead_count']}/5・機械={h['style']}）" for h in c4))
     ex_any = [h for h in horses if h.get("excl")]
     if ex_any:
         L.append("- R44：種別の異なる走を含む馬は除外後の r_med / 区分を §1 に併記した。"
                  "除外後に区分が変わる馬は工程4のペーススコアと工程5の隊列で除外後の区分を使う： "
-                 + "、".join(f"#{h['no']} {h['name']}（{'★変化' if h['excl'].get('changed') else '変化なし'}）" for h in ex_any))
+                 + "、".join(f"#{h['no'] or h['row']} {h['name']}（{'★変化' if h['excl'].get('changed') else '変化なし'}）" for h in ex_any))
     if len(nige) + len(hana_others) >= 2:
         L.append("- ハナ実績馬が2頭以上 → R39 の4項目（内外関係・必逃性・主張実績・先手後の競り込み）を工程5で記録する")
     L.append(f"- JSON：`cache/profile/{slug}.json`（mark.py・reflect_prep.py の入力）")
