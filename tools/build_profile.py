@@ -478,7 +478,9 @@ def classify(h, today):
     h["agari_backed"] = (h["agari_diff_med"] is not None and h["agari_diff_med"] <= 0.3) or h["agari_top3"] >= 2
     # 継続/乗替
     prev = h["runs"][0].get("jockey") if h["runs"] else None
-    same = bool(prev) and (prev.startswith(h["jockey"]) or h["jockey"].startswith(prev))  # 出馬表側は省略表記
+    norm = lambda s: re.sub(r"[．.・\s　]", "", s or "")  # 「Ｍ．デム」と「Ｍデム」の表記揺れ
+    cur, prev = norm(h["jockey"]), norm(prev)
+    same = bool(prev) and bool(cur) and (prev.startswith(cur) or cur.startswith(prev))  # 出馬表側は省略表記
     h["jockey_change"] = "未定" if h["jockey"] == "未定" else ("継続" if same else "乗替")
     if h["last_body_weight"] is None and h["runs"] and h["runs"][0].get("body_weight"):
         h["last_body_weight"] = h["runs"][0]["body_weight"]
