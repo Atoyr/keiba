@@ -129,6 +129,25 @@ PACE_REVERSAL_FROM = 7  # 評価ルール10-7・隊列手順第1項の前崩れ�
 DEDUCT_ITEM = re.compile(r"^\s*#\s*(\d{1,2})\s*[:：]\s*(実測|未経験|自己実績\s*(\d+))\s*[:：]")
 R34_MARKS = {"◎", "○", "▲", "☆"}
 
+# --- R40 の機械化（2026-10-13 第3回較正レビューで台帳から 包含済(validate.py) へ移管） ---
+# ✕ には predictions.notes に `消し根拠=<カテゴリ>:<詳細>` を書く。カテゴリは閉じた語彙（層2の cat と同じ語）。
+# 最終点・base点の点差は単独では消し根拠にならない。2歳戦は r26_gate.py（R26消し根拠=）が別に見る。
+# 起点は R40 の制定日。自己申告 followed=1 のまま タグの無い ✕ が1件あった（京成杯AH2026 #1）ため、
+# 制定日から照合し、確定済みで races.notes の `逸脱=` に記録があれば WARN へ落とす（V4-0 と同じ扱い）。
+KESHI_FROM = "2026-09-03"
+KESHI_CATS = ("構造フィルタ", "条件不適合", "展開不適合")
+KESHI_TAG = re.compile(r"(?<!R26)消し根拠\s*[=＝]\s*([^:：/／\s]*)\s*[:：]?\s*([^/／]*)")
+# 点差を根拠にした句。「点差は根拠に使用していない」のように同じ句の中で否定していれば除く
+KESHI_SCORE = re.compile(r"点差|最終点|final_?score|base点")
+KESHI_NEG = re.compile(r"^[^。、,;；()（）]{0,16}?(ない|せず)")
+
+
+def keshi_score_word(detail):
+    for m in KESHI_SCORE.finditer(detail):
+        if not KESHI_NEG.search(detail[m.end():]):
+            return m.group(0)
+    return None
+
 
 def _load_tag_profile():
     """tools/tag_profile.py（K1）を読む。無ければ None＝プロファイル md との突合を省く。"""
@@ -511,7 +530,9 @@ def check_compliance(rid, race_row, prows, rbets, rfires, expected=None):
     elif m107.group(1) == "適用" and tag_long(notes, "反転根拠") is None:
         flag = race_row.get("pace_flag_pre") or ""
         if maekuzure_main(flag):
-            warn(f"races.csv [{rid}]: 10-7=適用 だが 反転根拠= がない（R46：適用するなら前崩れ確定の根拠を1行記録する）")
+            # 2026-10-13 第3回較正レビューで R46 を台帳から 包含済(validate.py) へ移したので WARN→ERROR
+            viol(f"races.csv [{rid}]: 10-7=適用 だが 反転根拠= がない（R46：適用するなら前崩れ確定の根拠を1行記録する）",
+                 r"10-7")
         else:
             viol(f"races.csv [{rid}]: 10-7=適用 だが pace_flag_pre «{flag[:30]}» は前崩れ単独の本線でなく、"
                  "反転根拠= もない（(c) R46：同確率・非前崩れ本線ではコース標準の妙味係数を使う）", r"10-7")
@@ -545,6 +566,38 @@ def check_compliance(rid, race_row, prows, rbets, rfires, expected=None):
                      "紐に残すか followed=0 に直す）")
 
 
+def check_keshi(rid, race_row, prows):
+    """R40：✕ の 消し根拠= を照合する（書式・語彙・点差のみの根拠）。根拠の裏付け（R43）は台帳側。"""
+    date = (race_row.get("date") or "").strip()
+    notes = race_row.get("notes") or ""
+    if not date or date < KESHI_FROM or "2歳" in (race_row.get("race_name") or "") or "R26対象=1" in notes:
+        return                      # 2歳戦は r26_gate.py と同じ判定で R26消し根拠= を見る
+    decided = bool((race_row.get("result_1st") or "").strip())
+    audited = [x for x in re.split(r"[;；]", tag_long(notes, "逸脱") or "") if x.strip()] if decided else []
+    for p in prows:
+        if (p.get("mark") or "").strip() not in KESHI_MARKS:
+            continue
+        no = (p.get("horse_no") or "").strip()
+        head = f"predictions.csv [{rid} #{no} {p.get('horse_name')}]"
+        m = KESHI_TAG.search(p.get("notes") or "")
+        if m is None:
+            problem = "消し根拠= がない"
+        elif m.group(1) not in KESHI_CATS:
+            problem = f"カテゴリ «{m.group(1) or '(空)'}» は語彙外（{'／'.join(KESHI_CATS)}）"
+        elif not m.group(2).strip():
+            problem = "詳細が空"
+        elif keshi_score_word(m.group(2)):
+            problem = f"点差・最終点を根拠にしている «{keshi_score_word(m.group(2))}»"
+        else:
+            continue
+        msg = (f"{head}: ✕ の{problem}（R40：notes に 消し根拠=<{'|'.join(KESHI_CATS)}>:<詳細> を書く。"
+               "点差・未経験は単独では消し根拠にならない）")
+        if any(re.search(r"#\s*%s(?![0-9])" % re.escape(no), x) and "R40" in x for x in audited):
+            warn(msg + "（逸脱= に記録済み・監査痕跡として保持）")
+        else:
+            err(msg)
+
+
 def load(name):
     path = os.path.join(BASE, name)
     if not os.path.exists(path):
@@ -566,6 +619,11 @@ def load(name):
         if not missing and not extra:
             detail.append("列順が定義と不一致")
         err(f"{name}: ヘッダー不一致 → {' / '.join(detail)}")
+    # 引用符なしのカンマで列が割れた行（notes が途中で切れて残りが捨てられる。中京記念2026 R32 が17列だった）
+    for i, r in enumerate(rows, start=2):
+        if None in r:
+            err(f"{name} {i}行目: 列数がヘッダーより多い（{len(header) + len(r[None])}列）。"
+                "notes にカンマを含むなら引用符で囲む")
     return header, rows
 
 
@@ -830,7 +888,7 @@ def main():
 
     # ---- 宣言と実装の突合（races.notes の宣言タグ ↔ bets） ----
     # 宣言タグ書式（log/README.md が正本）:
-    #   band=中 / 荒れ度=5 / 券種=三連複+三連単F / 堅実穴=40:60 / 予算=2500 / 計画総額=2400
+    #   band=中 / 荒れ度=5 / 券種=三連複+ワイド / 堅実穴=50:50 / 予算=2500 / 計画総額=2400
     # 乖離を許容する場合は notes に 乖離理由=... を書く（無断の乖離は ERROR）
     for rid, r in race_by_id.items():
         notes = r.get("notes") or ""
@@ -1023,6 +1081,10 @@ def main():
             warn(f"predictions.csv [{rid}]: プロファイル md を読めないので事実タグを突合できない"
                  f"（references/脚質認定_{r.get('date')}_{r.get('race_name')}.md）")
         check_compliance(rid, r, prows, bets_by_race.get(rid, []), fires_by_race.get(rid, []), expected)
+
+    # ---- R40（KESHI_FROM 以降・✕ の 消し根拠=） ----
+    for rid, r in race_by_id.items():
+        check_keshi(rid, r, preds_by_race.get(rid, []))
 
     # ---- report ----
     print("=" * 60)

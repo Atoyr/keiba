@@ -87,8 +87,10 @@ CASES = [
     ("(c) 10-7=適用・同確率・反転根拠なし → ERROR", race(notes="10-7=適用:ペーススコア16"), [row()], [], [], None, 1, 0),
     ("(c) 同・反転根拠あり", race(notes="10-7=適用:ペーススコア16 / 反転根拠=当日8Rまで前傾かつ内が荒れて外差し3連続"),
      [row()], [], [], None, 0, 0),
-    ("10-7=適用・前崩れ単独本線・反転根拠なし → WARN（R46 の記録）",
-     race(flag="前崩れ(競り合い型A本線)/隊列確定型(B対抗)", notes="10-7=適用:競り合い型が本線"), [row()], [], [], None, 0, 1),
+    ("10-7=適用・前崩れ単独本線・反転根拠なし → ERROR（R46 包含済・2026-10-13〜）",
+     race(flag="前崩れ(競り合い型A本線)/隊列確定型(B対抗)", notes="10-7=適用:競り合い型が本線"), [row()], [], [], None, 1, 0),
+    ("10-7=適用・前崩れ単独本線・反転根拠あり", race(flag="前崩れ(競り合い型A本線)/隊列確定型(B対抗)",
+     notes="10-7=適用:競り合い型が本線 / 反転根拠=当日8Rまで前傾かつ内が荒れて外差し3連続"), [row()], [], [], None, 0, 0),
     ("(e) ペーススコア≧7 で 10-7= なし → WARN", race(notes="band=荒"), [row()], [], [], None, 0, 1),
     ("ペーススコア6 は 10-7= 不要", race(ps="6", flag="中立", notes="band=堅"), [row()], [], [], None, 0, 0),
     ("(d) R34 followed=1・未経験＋実測（有効1/2）・紐外 → ERROR", race(),
@@ -113,6 +115,30 @@ CASES = [
 ]
 
 
+# R40（✕ の 消し根拠=）。2026-10-13 に台帳から validate.check_keshi へ移管
+KRACE = {"date": "2026-10-04", "race_name": "毎日王冠", "notes": "", "result_1st": ""}
+
+
+def kx(notes, mark="x", no="8"):
+    return {"horse_no": no, "horse_name": "テスト", "mark": mark, "notes": notes}
+
+
+KESHI_CASES = [
+    ("R40 制定日より前は見ない", dict(KRACE, date="2026-08-30"), [kx("")], 0, 0),
+    ("R40 正しい記録（展開不適合・自己実績）", KRACE, [kx("消し根拠=展開不適合:追込でr0.69以上の4走がすべて着外:自己実績4")], 0, 0),
+    ("R40 ✕に 消し根拠= がない → ERROR", KRACE, [kx("✕判定はR40/R07確認済み")], 1, 0),
+    ("R40 語彙外のカテゴリ → ERROR", KRACE, [kx("消し根拠=実績不足:近走大敗")], 1, 0),
+    ("R40 点差を根拠にした → ERROR", KRACE, [kx("消し根拠=条件不適合:最終点45.0で17位")], 1, 0),
+    ("R40 点差の否定文は拾わない（セントウルS2026 #6 の実文面）", KRACE,
+     [kx("消し根拠=構造フィルタ:別定57.0kg(+4.0kg)で同斤量帯の近走は馬券内0。点差は根拠に使用していない")], 0, 0),
+    ("R40 R26消し根拠= だけでは R40 を満たさない → ERROR", KRACE, [kx("R26消し根拠=キャリア:1戦")], 1, 0),
+    ("R40 2歳戦は r26_gate.py に任せる", dict(KRACE, race_name="サウジアラビアロイヤルカップ2歳"), [kx("")], 0, 0),
+    ("R40 無印は対象外", KRACE, [kx("", mark="-")], 0, 0),
+    ("R40 確定後に 逸脱= を記録済み → WARN", dict(KRACE, result_1st="1",
+     notes="逸脱=rules_master.csv R40:#8:消し根拠= のタグが無い"), [kx("自己申告のみ")], 0, 1),
+]
+
+
 def run_cases():
     print("=" * 86)
     print("■ validate.py 遵守検証 K3（判断タグの事実照合）回帰テスト")
@@ -124,6 +150,17 @@ def run_cases():
         V.errors.clear()
         V.warns.clear()
         V.check_compliance("TEST", r, prows, rbets, rfires, expected)
+        ok = len(V.errors) == e_exp and len(V.warns) == w_exp
+        failed += not ok
+        print("%-58s %-7s %-7s %s" % (name, "%d/%d" % (len(V.errors), e_exp),
+                                      "%d/%d" % (len(V.warns), w_exp), "PASS" if ok else "**FAIL**"))
+        if not ok:
+            for m in V.errors + V.warns:
+                print("        " + m)
+    for name, r, prows, e_exp, w_exp in KESHI_CASES:
+        V.errors.clear()
+        V.warns.clear()
+        V.check_keshi("TEST", r, prows)
         ok = len(V.errors) == e_exp and len(V.warns) == w_exp
         failed += not ok
         print("%-58s %-7s %-7s %s" % (name, "%d/%d" % (len(V.errors), e_exp),
@@ -145,7 +182,7 @@ def run_cases():
     if failed:
         print("**FAIL %d件**（log/README.md「判断タグ」節が正本）" % failed)
         return 1
-    print("全 %d ケース PASS" % (len(CASES) + 1))
+    print("全 %d ケース PASS" % (len(CASES) + len(KESHI_CASES) + 1))
     print()
     print("※ 照合できるのは「書かれた事実がプロファイルと合うか」まで（層2）。")
     print("　 その行を選んだ判断が正しかったか（層3）は analyze.py の一貫性表で n レース後に測る（TODO U24）。")
