@@ -14,6 +14,10 @@ if hasattr(sys.stdout, "reconfigure"):
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 
+# 実施済みの最後の較正レビューの n（第1回 n=10・第2回 n=20〈実施時26〉・第3回 n=30〈実施時31・2026-10-13〉）。
+# レビューを実施したらここを更新する（log/README.md 較正カウンタ節と同期）
+LAST_REVIEW_N = 30
+
 def load(name):
     path = os.path.join(BASE, name)
     if not os.path.exists(path):
@@ -886,7 +890,9 @@ def main():
     # 半減版帯域ズレ（races.csv notes に「帯域ズレ」を含む行を宣言としてカウント）
     zure = sum(1 for r in done if "帯域ズレ" in (r.get("notes") or ""))
 
-    print(f"全体 n={n_total}/10（うちpaper {n_paper}） ｜ R13(G1) {g1_done}/10 ｜ "
+    # 較正レビューは n=10 ごと（通算・リセットしない）。実施済みの最後のレビュー点から次の発動点を出す
+    next_review = LAST_REVIEW_N + 10
+    print(f"全体 n={n_total}/{next_review}（うちpaper {n_paper}） ｜ R13(G1) {g1_done}/10 ｜ "
           f"☆的中 {star_hit}/{len(star)} ｜ 半減版帯域ズレ {zure}回")
 
     # サンプル単位の内訳（ロードマップ v1.2）。
@@ -907,14 +913,15 @@ def main():
     print("暫定ルール発火（生成元レース除外・R17）:")
     for line in prov_lines:
         print(line)
-    if n_total >= 10:
+    if n_total >= next_review:
         print("-" * 60)
-        print("★★ n=10 到達：較正レビューを発動する（R19手順） ★★")
+        print(f"★★ n={next_review} 到達：較正レビューを発動する（R19手順） ★★")
         print("  1. validate.py → analyze.py → backtest.py を実行")
         print("  2. 発火5件以上かつ 逆行≧的中（capture軸）の暫定ルールを降格/廃止判定")
         print("  3. 検証待ち仮説を一括判定（log/README.md）。群1の仮説はレース数を待たずに集計実行")
     else:
-        print(f"→ レビューまで残り {10 - n_total} レース（ペーパー予想で加速可）")
+        print(f"→ 次の較正レビュー（n={next_review}）まで残り {next_review - n_total} レース"
+              f"（前回 n={LAST_REVIEW_N}・ペーパー予想で加速可）")
 
 
 if __name__ == "__main__":
