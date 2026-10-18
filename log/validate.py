@@ -141,6 +141,25 @@ KESHI_TAG = re.compile(r"(?<!R26)消し根拠\s*[=＝]\s*([^:：/／\s]*)\s*[:�
 KESHI_SCORE = re.compile(r"点差|最終点|final_?score|base点")
 KESHI_NEG = re.compile(r"^[^。、,;；()（）]{0,16}?(ない|せず)")
 
+# --- 予想確定後のユーザー指示による印変更（2026-10-17 #設計・秋華賞2026 の ☆追加が起点） ---
+# R14（確定後の印変更には独立した新根拠2つ・質問は根拠外）はモデルが照会に押されて印を動かすのを
+# 止める手続き行で、ユーザー本人が自分の判断で印を変えても followed=0 になり「ゲートの本丸」ERROR で
+# 確定できなかった。followed を 1 に書き換えるのは記録改ざんなので、followed=0 のまま次の2つが揃い、
+# 中身が predictions.csv と合うときに限り ERROR を WARN に落とす（書式の正本は log/README.md「判断タグ」節）：
+#   races.notes          `ユーザー指示=<日付>:#<馬番>:<旧印>→<新印>:<指示の要旨>`（項目は `;` 区切り）
+#   rule_fires の R14 行 `ユーザー指示=<日付>`（races.notes の項目の日付のどれかと一致）
+# 許すのは USER_OVERRIDE_RULES の行だけ。R14 は「変更という行為」に掛かる唯一の行で、指示されたこと
+# 自体が followed=0 の原因になる。他のルールは最終の印・買い目の中身で遵守を判定するので、ユーザー指示は
+# followed を変えない（各ルールのエスケープ `欠落理由=` `軸選定=` を使うか `#更新 全面` で回し直す）。
+# 広げると「ユーザー指示」と書くだけで全ゲートを素通りできる。追加は #設計 でこの集合を変える。
+# 買い目だけを変えた指示（印は不変）は従来どおり `乖離理由=` で扱い、本タグの対象外。
+USER_OVERRIDE_RULES = {"R14"}
+USER_OVERRIDE_KEY = "ユーザー指示"
+USER_OVERRIDE_ITEM = re.compile(
+    r"^\s*(\d{4}-\d{2}-\d{2})\s*[:：]\s*#\s*(\d{1,2})\s*[:：]\s*([◎○▲△☆x✕\-])\s*→\s*([◎○▲△☆x✕\-])"
+    r"\s*[:：]\s*(\S.*?)\s*$")
+USER_OVERRIDE_DATE = re.compile(USER_OVERRIDE_KEY + r"\s*[=＝]\s*(\d{4}-\d{2}-\d{2})")
+
 
 def keshi_score_word(detail):
     for m in KESHI_SCORE.finditer(detail):
@@ -598,6 +617,95 @@ def check_keshi(rid, race_row, prows):
             err(msg)
 
 
+def _norm_mark(m):
+    m = (m or "").strip()
+    return "-" if m == "" else ("x" if m in KESHI_MARKS else m)
+
+
+def parse_user_override(notes):
+    """races.notes の ユーザー指示= を項目に分ける。戻り値 (items, problems)。タグが無ければ (None, [])。"""
+    v = tag_long(notes, USER_OVERRIDE_KEY)
+    if v is None:
+        return None, []
+    items, problems = [], []
+    for raw in [x for x in re.split(r"[;；]", v) if x.strip()]:
+        m = USER_OVERRIDE_ITEM.match(raw)
+        if not m:
+            problems.append(f"書式外の項目 «{raw.strip()[:40]}»（<日付>:#<馬番>:<旧印>→<新印>:<指示の要旨>）")
+            continue
+        items.append({"date": m.group(1), "no": m.group(2), "old": _norm_mark(m.group(3)),
+                      "new": _norm_mark(m.group(4)), "text": m.group(5)})
+    if not items and not problems:
+        problems.append("項目が空")
+    return items, problems
+
+
+def user_override_problems(race_row, prows, fire):
+    """ユーザー指示= の記録が R14 の followed=0 を WARN に落とす条件を満たすか。戻り値は不備の一覧（空＝満たす）。"""
+    rl = (fire.get("rule_id") or "").strip()
+    if rl not in USER_OVERRIDE_RULES:
+        return [f"ユーザー指示= で WARN に落とせるのは {'/'.join(sorted(USER_OVERRIDE_RULES))} だけ"
+                "（他のルールは最終の印・買い目の中身で判定する。各ルールのエスケープか #更新 全面）"]
+    items, problems = parse_user_override(race_row.get("notes") or "")
+    if items is None:
+        return ["races.notes に ユーザー指示=<日付>:#<馬番>:<旧印>→<新印>:<指示の要旨> がない"]
+    m = USER_OVERRIDE_DATE.search(fire.get("notes") or "")
+    if not m:
+        problems.append(f"rule_fires の {rl} 行の notes に ユーザー指示=<日付> がない")
+    elif m.group(1) not in {it["date"] for it in items}:
+        problems.append(f"{rl} 行の ユーザー指示={m.group(1)} が races.notes の項目の日付と一致しない")
+    race_date = (race_row.get("date") or "").strip()
+    marks = {(p.get("horse_no") or "").strip(): _norm_mark(p.get("mark")) for p in prows}
+    last = {}
+    for it in items:
+        if race_date and it["date"] > race_date:
+            problems.append(f"#{it['no']} の指示日 {it['date']} がレース日 {race_date} より後")
+        if it["old"] == it["new"]:
+            problems.append(f"#{it['no']} の旧印と新印が同じ «{it['new']}»")
+        last[it["no"]] = it
+    for no, it in last.items():
+        if no not in marks:
+            problems.append(f"#{no} が predictions.csv にない")
+        elif marks[no] != it["new"]:
+            problems.append(f"#{no} の predictions.csv の印 «{marks[no]}» が指示後の印 «{it['new']}» と不一致")
+    return problems
+
+
+def gate_followed0(rid, race_row, prows, fire):
+    """ゲートの本丸：未決レースで fired=1・followed=0 のまま bets がある行。
+    ユーザー指示による R14 の変更として記録が揃っていれば WARN、それ以外は ERROR。"""
+    rl = (fire.get("rule_id") or "").strip()
+    head = f"rule_fires.csv [{rid} {rl}]: followed=0 のまま bets が存在"
+    claimed = (USER_OVERRIDE_DATE.search(fire.get("notes") or "")
+               or (rl in USER_OVERRIDE_RULES and tag_long(race_row.get("notes") or "", USER_OVERRIDE_KEY) is not None))
+    if not claimed:
+        err(head + "（未決レース・ゲート突破）")
+        return
+    problems = user_override_problems(race_row, prows, fire)
+    if problems:
+        err(head + "（未決レース・ゲート突破。ユーザー指示= の記録が条件を満たさない：" + " ／ ".join(problems) + "）")
+        return
+    items, _ = parse_user_override(race_row.get("notes") or "")
+    warn(head + "（ユーザー指示による印変更 " + "・".join(f"#{it['no']} {it['old']}→{it['new']}" for it in items)
+         + "。モデルの判断ではない記録として analyze.py が別集計する）")
+
+
+def check_user_override_tags(rid, race_row, prows, rfires, gated):
+    """races.notes に ユーザー指示= があるのにゲート判定（gate_followed0）を通らないレースの記録不備を WARN で拾う。
+    R14 は変更時の rule_fires 記録を必須にしているので、対になる R14 行（fired=1・followed=0）も確認する。"""
+    notes = race_row.get("notes") or ""
+    if tag_long(notes, USER_OVERRIDE_KEY) is None or rid in gated:
+        return
+    pair = [f for f in rfires if (f.get("rule_id") or "").strip() in USER_OVERRIDE_RULES
+            and f.get("fired") == "1" and f.get("followed") == "0"]
+    if not pair:
+        warn(f"races.csv [{rid}]: ユーザー指示= があるのに {'/'.join(sorted(USER_OVERRIDE_RULES))} の"
+             " fired=1・followed=0 の行がない（R14：確定後の印変更は rule_fires への記録が必須）")
+        return
+    for p in user_override_problems(race_row, prows, pair[0]):
+        warn(f"races.csv [{rid}]: ユーザー指示= の記録不備：{p}")
+
+
 def load(name):
     path = os.path.join(BASE, name)
     if not os.path.exists(path):
@@ -997,6 +1105,7 @@ def main():
                 gate2_rules.add(rid)
 
     # ---- rule_fires ----
+    override_gated = set()   # R14 の followed=0 をゲート判定に掛けたレース（check_user_override_tags で二重に出さない）
     for i, f_ in enumerate(fires, 2):
         rid, rl = (f_.get("race_id") or "").strip(), (f_.get("rule_id") or "").strip()
         if rid not in race_by_id:
@@ -1034,11 +1143,14 @@ def main():
                 warn(f"rule_fires.csv [{rid} {rl}]: as_of={as_of} が確定馬場 {going} と不一致（旧前提のnotesが残存）")
         # ゲートの本丸: followed=0 のまま買おうとしていないか。
         # 結果確定済みレースの違反は「記録された過去」であり outcome 列で追跡済み → スキップ
+        # ユーザー本人の指示による R14 の印変更は、記録が揃えば WARN（gate_followed0・log/README.md「判断タグ」節）
         if (f_.get("fired") == "1" and f_.get("followed") == "0"
                 and bets_by_race.get(rid)
                 and rid in race_by_id
                 and not race_by_id[rid].get("result_1st")):
-            err(f"rule_fires.csv [{rid} {rl}]: followed=0 のまま bets が存在（未決レース・ゲート突破）")
+            gate_followed0(rid, race_by_id[rid], preds_by_race.get(rid, []), f_)
+            if rl in USER_OVERRIDE_RULES:
+                override_gated.add(rid)
 
     # ---- ゲート②の網羅チェック（T9・scope列の実効化） ----
     # 指示v2 工程11：買い目確定直前に「買い目・配分・頭固定に作用する行＋status=暫定の全行」を
@@ -1081,6 +1193,10 @@ def main():
             warn(f"predictions.csv [{rid}]: プロファイル md を読めないので事実タグを突合できない"
                  f"（references/脚質認定_{r.get('date')}_{r.get('race_name')}.md）")
         check_compliance(rid, r, prows, bets_by_race.get(rid, []), fires_by_race.get(rid, []), expected)
+
+    # ---- ユーザー指示= の記録不備（ゲート判定に掛からなかったレース） ----
+    for rid, r in race_by_id.items():
+        check_user_override_tags(rid, r, preds_by_race.get(rid, []), fires_by_race.get(rid, []), override_gated)
 
     # ---- R40（KESHI_FROM 以降・✕ の 消し根拠=） ----
     for rid, r in race_by_id.items():

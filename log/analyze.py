@@ -469,6 +469,59 @@ def section_compliance(preds, races, fires):
         print("    割れなし")
 
 
+def section_user_override(preds, races, fires):
+    """予想確定後のユーザー指示による印変更（races.notes の ユーザー指示=・2026-10-17 #設計）。
+
+    モデルの判断ではない変更なので、印別成績（最終印で数える）とは別に旧印＝モデルの印と新印＝ユーザーの印を並べ、
+    変更が結果に照らしてどちら向きだったかを数える。群2（頭単位）の集計で、ルールの改廃には使わない（R19）。
+    """
+    V = _load_module("validate_mod", os.path.join(BASE, "validate.py"))
+    print()
+    print("=" * 60)
+    print("■ ユーザー指示による印変更（モデル印とユーザー印の別集計）")
+    print("=" * 60)
+    if V is None:
+        print("※ validate.py を読めないため省略")
+        return
+    pred_by = {(p["race_id"], (p.get("horse_no") or "").strip()): p for p in preds}
+    bought = V.BOUGHT_MARKS
+    cls = defaultdict(lambda: [0, 0, 0])   # 区分 → [件数, 結果確定, 3着内]
+    n_items = 0
+    for r in races:
+        items, _ = V.parse_user_override(r.get("notes") or "")
+        if not items:
+            continue
+        for it in items:
+            n_items += 1
+            p = pred_by.get((r["race_id"], it["no"]), {})
+            fin = (p.get("finish_pos") or "").strip()
+            if it["new"] in bought and it["old"] not in bought:
+                kind = "買い目に入れた"
+            elif it["old"] in bought and it["new"] not in bought:
+                kind = "買い目から外した"
+            else:
+                kind = "印の入れ替え"
+            c = cls[kind]
+            c[0] += 1
+            if fin:
+                c[1] += 1
+                c[2] += p.get("in_place") == "1"
+            print(f"  {r['race_name']} {it['date']} #{it['no']} {p.get('horse_name', '?')}: "
+                  f"モデル {it['old']} → ユーザー {it['new']}（{kind}・{fin + '着' if fin else '結果待ち'}）「{it['text']}」")
+    if not n_items:
+        print("記録なし（races.notes に ユーザー指示=<日付>:#<馬番>:<旧印>→<新印>:<指示の要旨> を書いたレースが無い）")
+        return
+    for kind in ("買い目に入れた", "買い目から外した", "印の入れ替え"):
+        n, d, k = cls[kind]
+        if n:
+            print(f"  {kind}: {n}件・結果確定 {d}件・3着内 {k}/{d}" if d else f"  {kind}: {n}件・結果待ち")
+    o = [f for f in fires if (f.get("rule_id") or "").strip() in V.USER_OVERRIDE_RULES
+         and f.get("followed") == "0" and V.USER_OVERRIDE_DATE.search(f.get("notes") or "")]
+    print(f"  対になる R14 行（followed=0・ユーザー指示=）：{len(o)}件")
+    print("※ 3着内は「入れた」ならユーザー指示が拾った側、「外した」ならモデル印のほうが正しかった側。")
+    print("  印別成績は最終印（ユーザー指示後）で数える。モデル単独の成績を見るときはこの旧印で読み替える。")
+
+
 def main():
     preds = load("predictions.csv")
     bets = load("bets.csv")
@@ -783,11 +836,13 @@ def main():
             outcomes[r.get("outcome", "?")] += 1
             if (r.get("capture") or "").strip():
                 caps[r["capture"].strip()] += 1
+        # ユーザー指示による変更（R14・validate.USER_OVERRIDE_RULES）は違反だがモデルの判断ではないので内数で分ける
+        by_user = sum(1 for r in fired if r.get("followed") == "0" and "ユーザー指示=" in (r.get("notes") or ""))
         oc = " / ".join(f"{k}:{v}" for k, v in outcomes.items())
         cp = (" capture[" + " ".join(f"{k}:{v}" for k, v in caps.items()) + "]") if caps else ""
         d = rule_dir.get(rid, "")
         print(f"{rid}({d}) {rules.get(rid, '')[:26]}: 発火 {len(fired)} "
-              f"遵守 {followed}/{len(fired)} [{oc}]{cp}")
+              f"遵守 {followed}/{len(fired)}{f'（不遵守のうちユーザー指示 {by_user}）' if by_user else ''} [{oc}]{cp}")
     print("※ capture は結果に照らした予測方向の当否（的中/空振り/逆行）。損益寄与の outcome とは独立の第2軸。")
     print("  direction=手続き のルールは capture では判定せず、遵守率と validate.py の機械化可否で扱う（R19）。")
 
@@ -817,6 +872,7 @@ def main():
     section_ablation(preds, races)
     section_sim_calibration(preds, races)
     section_compliance(preds, races, fires)
+    section_user_override(preds, races, fires)
 
     print()
     print("=" * 60)
