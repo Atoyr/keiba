@@ -29,8 +29,13 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 EXEMPT_RACES = {"2026_sakitama_hai", "2026_hakodate_kinen", "2026_radio_nikkei"}
 
 # 予算ガード（log/README.md 記録の原則9）。制定日より前のレースは対象外
+# 2026-07-27〜：1レース3,000円。2026-11-12〜（システム v3）：週9,000円（月曜〜日曜）＋1レース6,000円
 RACE_BUDGET_CAP = 3000
 BUDGET_GUARD_FROM = "2026-07-27"
+V3_FROM = "2026-11-12"
+WEEK_BUDGET_CAP_V3 = 9000
+RACE_BUDGET_CAP_V3 = 6000
+WEIGHT_TYPES = ("ハンデ", "別定", "定量", "馬齢")
 
 # 分解記録スキーマ（A-1）と capture 語彙（A-2）の適用開始日。
 # 制定日より前のレースは対象外＝遡及入力を強制しない（強制すると再構成＝捏造になる）
@@ -735,6 +740,12 @@ def load(name):
     return header, rows
 
 
+def _week_monday(date_str):
+    import datetime
+    d = datetime.date.fromisoformat(date_str)
+    return (d - datetime.timedelta(days=d.weekday())).isoformat()
+
+
 def is_paper(race_row):
     return (race_row.get("notes") or "").strip().lower().startswith("paper")
 
@@ -998,6 +1009,7 @@ def main():
     # 宣言タグ書式（log/README.md が正本）:
     #   band=中 / 荒れ度=5 / 券種=三連複+ワイド / 堅実穴=50:50 / 予算=2500 / 計画総額=2400
     # 乖離を許容する場合は notes に 乖離理由=... を書く（無断の乖離は ERROR）
+    week_cost = defaultdict(list)  # 月曜日 → [(race_id, 実購入)]（システム v3 の週予算）
     for rid, r in race_by_id.items():
         notes = r.get("notes") or ""
         rbets = bets_by_race.get(rid, [])
@@ -1010,9 +1022,25 @@ def main():
         if rbets and not decided and (band is None or plan_total is None):
             err(f"races.csv [{rid}]: 買い目があるのに宣言タグ不足（band= / 計画総額= が必要・宣言行なしの買い目は確定禁止）")
 
+        # (1-b) 斤量区分とハンデ列（システム v3・2026-11-12〜。配分表 v3.0 第2-1項・R50）
+        is_v3 = (r.get("date") or "") >= V3_FROM
+        weight = tag(notes, "斤量")
+        hcol = tag(notes, "ハンデ列")
+        if is_v3:
+            if weight not in WEIGHT_TYPES:
+                err(f"races.csv [{rid}]: notes に 斤量=ハンデ|別定|定量|馬齢 がない"
+                    "（ハンデ戦／非ハンデ戦の区分は配分と集計の入力。出馬表で確認して書く）")
+            elif weight == "ハンデ" and rbets:
+                if hcol is None or not (hcol == "適用" or hcol.startswith("不適用")):
+                    err(f"races.csv [{rid}]: ハンデ戦なのに ハンデ列=適用 か ハンデ列=不適用:<理由> がない（R50）")
+            elif weight != "ハンデ" and hcol == "適用":
+                err(f"races.csv [{rid}]: 斤量={weight} なのに ハンデ列=適用（ハンデ列はハンデ戦だけ）")
+
         if not rbets:
             continue
         actual_total = sum(to_f(b.get("cost")) or 0 for b in rbets)
+        if is_v3:
+            week_cost[_week_monday(r.get("date"))].append((rid, actual_total))
 
         # (2) 券種構成：宣言と実購入の集合差（券種の無断欠落＝過去2レースの失敗パターン）
         kenshu = tag(notes, "券種")
@@ -1038,12 +1066,22 @@ def main():
         if budget is not None and actual_total > budget + 0.01:
             err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が宣言予算 {budget:.0f}円 を超過")
 
-        # (4-b) 予算ガード：1レース上限3,000円（2026-07-27制定・制定前レースは対象外）
-        if (r.get("date") or "") >= BUDGET_GUARD_FROM:
+        # (4-b) 予算ガード（記録原則9）。〜2026-11-11：1レース3,000円／2026-11-12〜：1レース6,000円＋週9,000円（ループ後に照合）
+        if is_v3:
+            if actual_total > RACE_BUDGET_CAP_V3 + 0.01:
+                err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が1レース上限 {RACE_BUDGET_CAP_V3}円 を超過（予算ガード）")
+            if budget is not None and budget > RACE_BUDGET_CAP_V3 + 0.01:
+                err(f"races.csv [{rid}]: 宣言予算 {budget:.0f}円 が1レース上限 {RACE_BUDGET_CAP_V3}円 を超過（予算ガード）")
+        elif (r.get("date") or "") >= BUDGET_GUARD_FROM:
+            # 旧上限の超過は、ユーザー指示による超過として 逸脱= に事実記録があれば WARN（2026-11-12 に上限の定義を
+            # 週単位へ改めたため。記録の無い超過は ERROR のまま）
+            recorded = bool(re.search(r"逸脱=[^/／]*予算ガード", notes))
+            report = warn if recorded else err
+            tail = "・逸脱= に記録あり／2026-11-12 に週予算へ改定" if recorded else ""
             if actual_total > RACE_BUDGET_CAP + 0.01:
-                err(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（予算ガード）")
+                report(f"races.csv [{rid}]: 実購入 {actual_total:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（旧予算ガード{tail}）")
             if budget is not None and budget > RACE_BUDGET_CAP + 0.01:
-                err(f"races.csv [{rid}]: 宣言予算 {budget:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（予算ガード）")
+                report(f"races.csv [{rid}]: 宣言予算 {budget:.0f}円 が1レース上限 {RACE_BUDGET_CAP}円 を超過（旧予算ガード{tail}）")
 
         # (5) 堅実:穴の配分（bets.notes の side=堅実/穴 タグが全行に揃っている場合のみ判定）
         ratio = tag(notes, "堅実穴")
@@ -1076,6 +1114,13 @@ def main():
 
         # (8) 層2: `欠落理由=` の内容照合（2026-09-20 #設計・REASON_TAG_FROM 以降）
         check_reason_tags(rid, r, notes, rbets, preds_by_race.get(rid, []))
+
+    # (9) 週予算（システム v3・月曜〜日曜の実購入合計）
+    for monday, items in sorted(week_cost.items()):
+        total = sum(c for _, c in items)
+        if total > WEEK_BUDGET_CAP_V3 + 0.01:
+            err(f"races.csv [{monday}週]: 実購入の合計 {total:.0f}円 が週上限 {WEEK_BUDGET_CAP_V3}円 を超過"
+                f"（予算ガード・{' / '.join(f'{rid} {c:.0f}円' for rid, c in items)}）")
 
     # ---- rules_master ----
     rule_ids = set()

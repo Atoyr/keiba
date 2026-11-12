@@ -2,12 +2,12 @@
 # claude_run.sh — 集計・バックテストのランナー（Claude.ai コンテナ／ローカル共通）
 #
 # GitHub の最新 main を取得して log/validate.py → log/test_reason_tags.py → log/test_compliance.py → log/test_user_override.py → log/r26_gate.py → log/gate.py
-# → log/analyze.py → log/backtest.py → log/calibrate.py を実行する。
+# → log/analyze.py → log/weekly.py → log/backtest.py → log/calibrate.py を実行する。
 # Claude.ai のコード実行コンテナは GitHub への通信が許可されているため、
 # プロジェクトナレッジの Sync 状態と無関係に常に最新コミットで集計できる。
 #
 # 使い方:
-#   bash tools/claude_run.sh              # validate + 層2テスト + 遵守検証テスト + ユーザー指示例外テスト + R26 gate + gate + analyze + backtest + calibrate
+#   bash tools/claude_run.sh              # validate + 層2テスト + 遵守検証テスト + ユーザー指示例外テスト + R26 gate + gate + analyze + weekly + backtest + calibrate
 #   bash tools/claude_run.sh --detail     # backtest にレース別内訳を渡す
 #   KEIBA_LOCAL=1 bash tools/claude_run.sh  # 取得せず手元の作業コピーで実行
 set -euo pipefail
@@ -76,6 +76,14 @@ fi
 echo
 echo "================ analyze.py ================"
 python3 "$WORK/log/analyze.py"
+
+echo
+echo "================ weekly.py ================="
+if [ -f "$WORK/log/weekly.py" ]; then
+  python3 "$WORK/log/weekly.py"
+else
+  echo "[skip] log/weekly.py が main に未コミット。"
+fi
 
 echo
 echo "================ backtest.py ==============="
