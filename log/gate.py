@@ -151,6 +151,9 @@ def main():
 
         notes_all = (r.get("notes") or "") + " " + " ".join(b.get("notes") or "" for b in rows)
         band = (re.search(r"band=(\S+)", r.get("notes") or "") or [None, ""])[1]
+        # ハンデ列（配分表 第2-1項・R50）：band= はスコアどおりに書き、買い目は一段荒い帯域で組む
+        if re.search(r"ハンデ列\s*=\s*適用", r.get("notes") or ""):
+            band = {"堅": "中", "中": "荒"}.get(band, band)
         pop = {int(to_f(p["horse_no"])): to_f(p.get("popularity")) for p in ps if to_f(p.get("horse_no"))}
         final = {int(to_f(p["horse_no"])): to_f(p.get("final_score")) for p in ps if to_f(p.get("horse_no"))}
         myomi = {int(to_f(p["horse_no"])): to_f(p.get("myomi_score")) for p in ps if to_f(p.get("horse_no"))}
